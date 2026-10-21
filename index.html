@@ -1,0 +1,1389 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Convo Greeting</title>
+<!-- Convo brand tokens and fonts: linked, never copied -->
+<link rel="stylesheet" href="https://brand.convo.io/cdn/v1/brand.css" onerror="window.assetFailed = (window.assetFailed || []).concat('brand styles')">
+<script src="https://unpkg.com/lucide@0.460.0/dist/umd/lucide.min.js" onerror="window.assetFailed = (window.assetFailed || []).concat('icons')"></script>
+<style>
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--felt-canvas); color: var(--felt-text);
+    font-family: var(--font-family-body);
+    font-size: var(--felt-text-xs-size); line-height: var(--felt-text-xs-line); letter-spacing: var(--felt-text-xs-tracking);
+  }
+  svg.lucide { width: 20px; height: 20px; stroke-width: 2; flex: none; }
+  .hidden { display: none !important; }
+
+  /* Top bar */
+  .topbar { display: flex; align-items: center; gap: var(--felt-space-xs); padding: var(--felt-space-xs) var(--felt-space-s); }
+  .topbar img { height: 24px; display: block; }
+  .topbar .name { font-family: var(--font-family-display); font-weight: var(--font-weight-medium);
+                  font-size: var(--felt-text-m-size); line-height: var(--felt-text-m-line); letter-spacing: var(--felt-text-m-tracking); }
+  .topbar .spacer { flex: 1; }
+
+  /* Layout: canvas first, floating inspector beside it */
+  main { display: grid; grid-template-columns: 1fr 340px; gap: var(--felt-space-s); padding: 0 var(--felt-space-s) var(--felt-space-s); align-items: start; }
+  @media (max-width: 960px) { main { grid-template-columns: 1fr; padding: 0 16px 16px; } .topbar { padding: 12px 16px; } }
+
+  /* Buttons */
+  button { font: inherit; font-weight: var(--font-weight-medium); font-size: var(--felt-text-s-size); line-height: var(--felt-text-s-line);
+           letter-spacing: var(--felt-text-s-tracking); border: 0; border-radius: var(--felt-radius-s); cursor: pointer;
+           display: inline-flex; align-items: center; justify-content: center; gap: var(--space-tight);
+           padding: 12px 28px; min-height: 48px; color: var(--felt-text); background: transparent; text-decoration: none;
+           transition: background-color var(--felt-motion-duration) var(--felt-motion-easing), box-shadow var(--felt-motion-duration) var(--felt-motion-easing), transform var(--felt-motion-duration) var(--felt-motion-easing); }
+  button:active:not(:disabled) { transform: translateY(var(--felt-press-distance)); }
+  button:focus-visible, input:focus-visible, .drop:focus-visible, .seg:focus-visible {
+    outline: var(--border-thickness-medium) solid var(--focus-ring-color); outline-offset: 2px; }
+  button.primary { background: var(--felt-primary); color: var(--felt-on-primary); }
+  button.primary:hover:not(:disabled) { box-shadow: var(--felt-shadow-s); }
+  button.secondary { background: var(--felt-tint); color: var(--felt-on-tint); }
+  button.ghost:hover:not(:disabled) { background: var(--felt-fill); }
+  button:disabled { opacity: var(--opacity-muted); cursor: not-allowed; }
+  button.compact { padding: 6px 14px; min-height: 36px; font-size: var(--felt-text-xs-size); }
+  button.icon { padding: 6px; min-height: 32px; min-width: 32px; }
+  button.icon svg.lucide { width: 16px; height: 16px; }
+
+  /* ---------- Video stage: what you see is what exports ---------- */
+  .stage-col { position: sticky; top: var(--felt-space-xs); }
+  @media (max-width: 960px) { .stage-col { position: static; } }
+  .stage { container-type: inline-size; position: relative; width: 100%; max-width: calc(68vh * 4 / 3); margin: 0 auto;
+           aspect-ratio: 4 / 3; border-radius: var(--felt-radius-m); overflow: hidden; background: var(--color-base-black);
+           --fs: 48; --bw: 600; --stroke: 0; --u: calc(100cqw / 1280); }
+  .stage canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+  .stage::after { content: ''; position: absolute; inset: 0; pointer-events: none; border-radius: inherit;
+                  box-shadow: inset 0 0 0 4px var(--felt-primary); opacity: 0; transition: opacity var(--motion-duration-fade); }
+  .stage.over-bg::after { opacity: 1; }
+  .overlay { position: absolute; inset: 0; }
+  .stage.playing .overlay { display: none; }
+
+  /* Text typed straight onto the video. Sizes mirror the canvas drawing. */
+  .on-video { outline: none; letter-spacing: 0; font-family: Inter, system-ui, -apple-system, Helvetica, Arial, sans-serif;
+              transition: box-shadow var(--felt-motion-duration) var(--felt-motion-easing); }
+  .on-video:hover { box-shadow: 0 0 0 2px color-mix(in srgb, var(--felt-primary) 60%, transparent); }
+  .on-video:focus { box-shadow: 0 0 0 3px var(--felt-primary); }
+  .on-video::placeholder { color: inherit; opacity: 0.6; }
+  .msg-layer { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; pointer-events: none; }
+  .msg-edit { pointer-events: auto; display: block; margin: 0; border: 0; resize: none; overflow: hidden; cursor: text;
+              text-align: var(--align, center); white-space: pre-wrap; overflow-wrap: anywhere; font-weight: 400;
+              font-size: calc(var(--fs) * var(--u)); line-height: 1.3;
+              width: calc(var(--bw) * var(--u) + 4px);
+              padding: calc(28 * var(--u)) calc(40 * var(--u));
+              border-radius: calc(24 * var(--u));
+              color: var(--ink); background: var(--box);
+              -webkit-text-stroke: calc(var(--stroke) * var(--u)) var(--color-base-black); paint-order: stroke fill; }
+  .head-edit { position: absolute; margin: 0; border: 0; padding: 0; background: transparent; color: var(--color-base-white);
+               border-radius: 6px; }
+  #nameEdit { font-weight: 500; }
+  #titleEdit { font-weight: 400; }
+
+  /* Logo slot sits exactly where the logo draws */
+  .logo-slot { position: absolute; border-radius: var(--felt-radius-s); display: flex; align-items: center; justify-content: center;
+               gap: 6px; cursor: pointer; padding: 0; min-height: 0; color: var(--color-base-white); font-size: var(--felt-text-xs-size); }
+  .logo-slot.empty { background: color-mix(in srgb, var(--color-base-white) 14%, transparent); flex-direction: column; gap: 2px;
+                     font-size: clamp(10px, calc(22 * var(--u)), 14px); line-height: 1.1; text-align: center; white-space: nowrap; }
+  .logo-slot.empty svg.lucide { width: clamp(14px, calc(34 * var(--u)), 22px); height: clamp(14px, calc(34 * var(--u)), 22px); }
+  .logo-slot.empty:hover { background: color-mix(in srgb, var(--color-base-white) 22%, transparent); }
+  .logo-slot:not(.empty):hover, .logo-slot:not(.empty):focus-visible { box-shadow: 0 0 0 2px color-mix(in srgb, var(--felt-primary) 60%, transparent); }
+  .logo-slot.over { background: var(--felt-tint); color: var(--felt-on-tint); }
+  .logo-remove { position: absolute; display: none; background: var(--felt-raised); color: var(--felt-text); box-shadow: var(--felt-shadow-s); }
+  .logo-wrap:hover .logo-remove, .logo-wrap:focus-within .logo-remove { display: inline-flex; }
+
+  /* Tools under the video */
+  .stage-bar { display: flex; align-items: center; justify-content: space-between; gap: 12px; max-width: calc(68vh * 4 / 3); margin: 10px auto 0; flex-wrap: wrap; }
+  .stage-bar .group { display: flex; align-items: center; gap: 8px; }
+  .stage-meta { max-width: calc(68vh * 4 / 3); margin: 6px auto 0; color: var(--felt-text-muted); font-size: var(--felt-text-xxs-size); }
+
+  /* ---------- Card strip ---------- */
+  .strip { display: flex; gap: var(--space-tight); overflow-x: auto; padding: 4px; margin: var(--felt-space-xs) auto 0; max-width: calc(68vh * 4 / 3 + 8px); }
+  .thumb-wrap { position: relative; flex: none; }
+  .thumb { display: grid; gap: 4px; padding: 6px; min-height: 0; border-radius: var(--felt-radius-s); font-size: var(--felt-text-xxs-size);
+           line-height: var(--felt-text-xxs-line); color: var(--felt-text-muted); justify-items: start; }
+  .thumb:hover { background: var(--felt-fill); }
+  .thumb[aria-pressed="true"] { background: var(--felt-tint); color: var(--felt-on-tint); }
+  .thumb canvas { width: 128px; aspect-ratio: 4 / 3; border-radius: 8px; display: block; background: var(--color-base-black); }
+  .thumb-del { position: absolute; top: 10px; right: 10px; display: none; background: var(--felt-raised); color: var(--felt-text); box-shadow: var(--felt-shadow-s); }
+  .thumb-wrap:hover .thumb-del, .thumb-wrap:focus-within .thumb-del { display: inline-flex; }
+  .add-tile { flex: none; width: 140px; align-self: stretch; flex-direction: column; gap: 4px; padding: 6px; min-height: 0;
+              background: var(--felt-fill); color: var(--felt-text); font-size: var(--felt-text-xs-size); }
+  .add-tile:hover:not(:disabled) { background: var(--felt-fill-strong); }
+
+  #status { min-height: 20px; margin: var(--space-tight) auto 0; max-width: calc(68vh * 4 / 3); color: var(--felt-text-muted); }
+  #status[data-tone="error"] { color: var(--status-critical-fg); }
+
+  /* ---------- Inspector ---------- */
+  .inspector { background: var(--felt-raised); box-shadow: var(--felt-shadow-m); border-radius: var(--felt-radius-m);
+               padding: var(--felt-space-s); display: grid; gap: var(--felt-space-m); }
+  .group { display: grid; gap: var(--felt-space-xs); }
+  .group-label { font-family: var(--font-family-display); font-size: var(--felt-text-xs-size); color: var(--felt-text-muted); margin: 0; font-weight: var(--font-weight-regular); }
+  .help { color: var(--felt-text-muted); font-size: var(--felt-text-xxs-size); line-height: var(--felt-text-xxs-line); margin: 0; }
+  .help[data-tone="error"] { color: var(--status-critical-fg); }
+  .row { display: flex; align-items: center; justify-content: space-between; gap: var(--felt-space-xs); min-height: 40px; }
+  .row .value { color: var(--felt-text-muted); text-align: right; }
+  input[type=range] { width: 150px; accent-color: var(--action-primary-bg); }
+  .field { width: 100%; font: inherit; font-size: var(--felt-text-s-size); line-height: var(--felt-text-s-line); letter-spacing: var(--felt-text-s-tracking);
+           color: var(--felt-text); background: var(--felt-fill); border: 0; border-radius: var(--felt-radius-s); padding: 12px 16px; }
+  .field::placeholder { color: var(--felt-text-muted); }
+  textarea.field { min-height: 88px; resize: vertical; }
+  .field-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+  .field-head label { font-weight: var(--font-weight-medium); }
+
+  /* Mode switch */
+  .seg { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; background: var(--felt-fill); border-radius: var(--felt-radius-s); padding: 4px; gap: 4px; }
+  .seg button { white-space: nowrap; gap: 6px; padding: 8px; min-height: 40px; font-size: var(--felt-text-xs-size); border-radius: 9px; color: var(--felt-text-muted); }
+  .seg button svg.lucide { width: 16px; height: 16px; }
+  .seg button[aria-checked="true"] { background: var(--felt-raised); color: var(--felt-text); box-shadow: var(--felt-shadow-s); }
+  @media (prefers-color-scheme: dark) { .seg button[aria-checked="true"] { background: var(--felt-fill-strong); } }
+
+  /* Choice tiles with a preview (message style, layout) */
+  .tiles { display: grid; grid-template-columns: repeat(var(--cols, 3), 1fr); gap: var(--space-tight); }
+  .tiles button { flex-direction: column; gap: 6px; padding: 6px 6px 8px; min-height: 0; font-size: var(--felt-text-xxs-size); line-height: var(--felt-text-xxs-line);
+                  background: var(--felt-fill); color: var(--felt-text-muted); border-radius: var(--felt-radius-s); }
+  .tiles button[aria-checked="true"] { background: var(--felt-tint); color: var(--felt-on-tint); }
+  .swatch { width: 100%; height: 44px; border-radius: 8px; background: var(--color-neutral-500); display: flex; align-items: center; justify-content: center; }
+  .swatch span { font: 700 18px/1 Inter, system-ui, sans-serif; padding: 4px 8px; border-radius: 6px; letter-spacing: 0; }
+  .swatch .dark { background: var(--color-base-black); color: var(--color-base-white); }
+  .swatch .light { background: var(--color-base-white); color: var(--color-base-black); }
+  .swatch .outline { color: var(--color-base-white); -webkit-text-stroke: 3px var(--color-base-black); paint-order: stroke fill; }
+  /* Tiny layout sketches */
+  .sketch { width: 100%; aspect-ratio: 4 / 3; border-radius: 8px; background: var(--color-base-black); position: relative; }
+  .sketch i { position: absolute; display: block; background: var(--color-neutral-400); border-radius: 2px; }
+
+  /* Audio drop zone */
+  .drop { background: var(--felt-fill); border-radius: var(--felt-radius-s); min-height: 90px; display: flex; flex-direction: column;
+          align-items: center; justify-content: center; gap: 4px; text-align: center; padding: 12px; cursor: pointer; color: var(--felt-text-muted);
+          transition: background-color var(--felt-motion-duration) var(--felt-motion-easing); }
+  .drop strong { color: var(--felt-text); font-weight: var(--font-weight-medium); overflow-wrap: anywhere; }
+  .drop:hover { background-color: var(--felt-fill-strong); }
+  .drop.over { background-color: var(--felt-tint); color: var(--felt-on-tint); }
+  audio { width: 100%; }
+
+  /* Export dialog: exporting, then ready */
+  .scrim { position: fixed; inset: 0; background: color-mix(in srgb, var(--color-base-black) 60%, transparent); display: flex;
+           align-items: center; justify-content: center; z-index: var(--z-index-modal); padding: 16px; }
+  .sheet { background: var(--felt-raised); box-shadow: var(--felt-shadow-l); border-radius: var(--felt-radius-l); width: min(520px, 100%);
+           padding: var(--felt-space-m); animation: rise var(--felt-motion-duration-large) var(--felt-motion-easing-large); max-height: calc(100vh - 32px); overflow: auto; }
+  .sheet > section { display: grid; gap: var(--felt-space-xs); }
+  @keyframes rise { from { opacity: 0; transform: scale(var(--felt-popup-scale)); } }
+  .sheet h2 { margin: 0; font-family: var(--font-family-display); font-weight: var(--font-weight-medium);
+              font-size: var(--felt-text-l-size); line-height: var(--felt-text-l-line); letter-spacing: var(--felt-text-l-tracking); }
+  .sheet-actions { display: flex; justify-content: flex-end; flex-wrap: wrap; gap: var(--space-tight); margin-top: var(--space-tight); }
+  .meter-step { margin: 0; font-weight: var(--font-weight-medium); }
+  .meter { height: 12px; background: var(--felt-fill); border-radius: var(--radius-pill); overflow: hidden; }
+  .meter > div { height: 100%; width: 0; background: var(--felt-primary); border-radius: inherit; transition: width 120ms linear; }
+  .meter-row { display: flex; justify-content: space-between; color: var(--felt-text-muted); font-variant-numeric: tabular-nums; }
+  .ready-video { width: 100%; aspect-ratio: 4 / 3; border-radius: var(--felt-radius-s); background: var(--color-base-black); display: block; }
+  .file-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 16px; background: var(--felt-fill); border-radius: var(--felt-radius-s); }
+  /* Embedded: the host page sizes the iframe to fit, so nothing here depends on the viewport */
+  html.embed .stage-col { position: static; }
+  html.embed .stage, html.embed .stage-bar, html.embed .strip, html.embed #status { max-width: none; }
+  html.embed body { overflow: hidden; }
+  html.embed .scrim { position: absolute; align-items: flex-start; padding-top: 88px; }
+  html.embed .sheet { max-height: none; }
+  .app-version { margin: 0; padding: 0 var(--felt-space-s) var(--felt-space-xs); text-align: center; color: var(--felt-text-muted); font-size: var(--felt-text-xxs-size); }
+  /* Phones and small windows: show a note instead of the editor */
+  .small-screen { display: none; }
+  @media (max-width: 719px), (pointer: coarse) and (max-height: 500px) {
+    .topbar, main, .scrim { display: none !important; }
+    .small-screen { display: grid; justify-items: center; gap: var(--felt-space-xs); text-align: center;
+                    padding: var(--felt-space-l, 48px) 24px; max-width: 420px; margin: 0 auto; }
+  }
+  /* Browsers that cannot export MP4 (e.g. Firefox): same note, shown at any size */
+  .unsupported-note { display: none; }
+  html.unsupported .topbar, html.unsupported main, html.unsupported .scrim, html.unsupported .small-screen { display: none !important; }
+  html.unsupported .unsupported-note { display: grid; justify-items: center; gap: var(--felt-space-xs); text-align: center;
+                                       padding: var(--felt-space-l, 48px) 24px; max-width: 460px; margin: 0 auto; }
+  .small-screen svg.lucide, .unsupported-note svg.lucide { width: 40px; height: 40px; color: var(--felt-primary); }
+  .small-screen h2, .unsupported-note h2 { margin: 0; font-family: var(--font-family-display); font-weight: var(--font-weight-medium);
+                     font-size: var(--felt-text-l-size); line-height: var(--felt-text-l-line); letter-spacing: var(--felt-text-l-tracking); }
+  .small-screen p, .unsupported-note p { margin: 0; color: var(--felt-text-muted); font-size: var(--felt-text-s-size); line-height: var(--felt-text-s-line); }
+  .mode-link { justify-self: start; padding-left: 0; padding-right: 0; color: var(--felt-text-muted); }
+  .mode-link:hover:not(:disabled) { background: none; color: var(--felt-text); }
+  .rec-file { display: grid; gap: 8px; }
+  .rec-file strong { font-weight: var(--font-weight-medium); overflow-wrap: anywhere; }
+  .rec-file button { justify-self: start; }
+  /* Something broke: a friendly note with a way to tell Jay */
+  .problem .sheet { display: grid; gap: var(--felt-space-xs, 12px); background: var(--felt-raised, #2a2a28); color: var(--felt-text, #fff);
+                    font-family: var(--font-family-body, system-ui, sans-serif); border-radius: var(--felt-radius-l, 20px); padding: var(--felt-space-m, 24px); }
+  .problem h2 { margin: 0; font-family: var(--font-family-display, inherit); font-weight: var(--font-weight-medium, 500); font-size: var(--felt-text-l-size, 22px); line-height: 1.25; }
+  .problem p { margin: 0; color: var(--felt-text-muted, #bbb); font-size: var(--felt-text-s-size, 16px); line-height: 1.45; }
+  .problem .tell { color: var(--felt-text, #fff); }
+  .problem .detail { font-size: var(--felt-text-xxs-size, 12px); line-height: 1.4; overflow-wrap: anywhere; opacity: 0.8; }
+  .problem .sheet-actions { display: flex; flex-wrap: wrap; gap: 8px; justify-content: flex-end; margin-top: 8px; }
+  .problem button.primary { background: var(--felt-primary, #00aa55); color: var(--felt-on-primary, #000); }
+  .problem button { font: inherit; }
+  .file-row strong { font-weight: var(--font-weight-medium); overflow-wrap: anywhere; display: block; }
+</style>
+</head>
+<body>
+<script>
+if (window.self !== window.top) document.documentElement.classList.add('embed');
+// The greeting is exported as MP4 recorded from the canvas; without that this browser cannot make one
+(function () {
+  var mp4 = ['video/mp4;codecs=avc1.42E01E,mp4a.40.2', 'video/mp4;codecs=avc1.42E01E', 'video/mp4'];
+  var ok = false;
+  try {
+    ok = !!(window.MediaRecorder && MediaRecorder.isTypeSupported && HTMLCanvasElement.prototype.captureStream &&
+            mp4.some(function (t) { return MediaRecorder.isTypeSupported(t); }) &&
+            window.CSS && CSS.supports('container-type', 'inline-size'));
+  } catch (e) {}
+  if (!ok) document.documentElement.classList.add('unsupported');
+})();
+</script>
+<section class="unsupported-note" aria-label="Browser not supported">
+  <svg class="lucide" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20"/><path d="M2 12h20"/></svg>
+  <h2>Convo Greeting doesn't work in this browser</h2>
+  <p>Please open this page in Chrome, Edge or Safari on a computer to create your greeting.</p>
+</section>
+<section class="small-screen" aria-label="Open on a computer">
+  <i data-lucide="monitor"></i>
+  <h2>Convo Greeting works best on a computer</h2>
+  <p>Please open this page on a desktop or laptop to create your greeting.</p>
+</section>
+<header class="topbar">
+  <img id="wordmark" src="https://brand.convo.io/cdn/v1/assets/logo/wordmark/Convo_Wordmark_Evergreen.svg" alt="Convo">
+  <span class="name">Greeting</span>
+  <span class="spacer"></span>
+  <button class="ghost" id="playBtn"><i data-lucide="play"></i><span>Preview</span></button>
+  <button class="primary" id="exportBtn"><i data-lucide="download"></i><span>Export</span></button>
+</header>
+
+<main>
+  <section class="stage-col" aria-label="Video">
+    <div class="stage" id="stage">
+      <canvas id="cv" width="1280" height="960" aria-hidden="true"></canvas>
+      <div class="overlay">
+        <input class="on-video head-edit" id="nameEdit" data-lpignore="true" data-1p-ignore data-bwignore data-form-type="other" type="text" placeholder="Full name" aria-label="Full name" autocomplete="off" spellcheck="false">
+        <input class="on-video head-edit" id="titleEdit" data-lpignore="true" data-1p-ignore data-bwignore data-form-type="other" type="text" placeholder="Job title" aria-label="Job title" autocomplete="off">
+        <div class="msg-layer">
+          <textarea class="on-video msg-edit" id="msgEdit" data-lpignore="true" data-1p-ignore data-bwignore data-form-type="other" rows="1" aria-label="Message for this card" spellcheck="true" placeholder="Type your message"></textarea>
+        </div>
+        <div class="logo-wrap">
+          <button class="logo-slot empty" id="logoSlot" aria-label="Add your logo"><i data-lucide="image-up"></i><span>Add logo</span></button>
+          <button class="icon logo-remove" id="logoRemove" aria-label="Remove logo"><i data-lucide="x"></i></button>
+        </div>
+      </div>
+    </div>
+
+    <div class="stage-bar">
+      <div class="group">
+        <div class="seg" role="radiogroup" aria-label="Message alignment for this card" id="alignSwitch">
+          <button role="radio" aria-checked="false" data-align="left" aria-label="Align left" tabindex="-1"><i data-lucide="align-left"></i></button>
+          <button role="radio" aria-checked="true" data-align="center" aria-label="Align centre"><i data-lucide="align-center"></i></button>
+          <button role="radio" aria-checked="false" data-align="right" aria-label="Align right" tabindex="-1"><i data-lucide="align-right"></i></button>
+        </div>
+      </div>
+    </div>
+
+    <div class="strip" id="strip" aria-label="Message cards"></div>
+    <div id="status" role="status" aria-live="polite"></div>
+
+    <input type="file" id="logoInput" accept="image/*" hidden>
+  </section>
+
+  <aside class="inspector" aria-label="Settings">
+    <div class="group">
+      <input class="field" type="text" id="phone" data-lpignore="true" data-1p-ignore data-bwignore data-form-type="other" inputmode="tel" placeholder="Insert Phone Number Here" aria-label="Phone number" autocomplete="off">
+      <p class="help hidden" id="fileHint"></p>
+    </div>
+
+    <div class="group">
+      <h2 class="group-label">Layout</h2>
+      <div class="tiles" role="radiogroup" aria-label="Layout" id="layoutSwitch" style="--cols:2">
+        <button role="radio" aria-checked="true" data-layout="profile">
+          <span class="sketch" aria-hidden="true"><i style="left:9%;top:12%;width:46%;height:8%"></i><i style="left:9%;top:24%;width:34%;height:5%"></i><i style="right:9%;top:10%;width:18%;height:24%;border-radius:50%"></i><i style="left:20%;top:46%;width:60%;height:9%"></i><i style="left:27%;top:80%;width:46%;height:3%"></i></span>
+          Name and title</button>
+        <button role="radio" aria-checked="false" data-layout="centred" tabindex="-1">
+          <span class="sketch" aria-hidden="true"><i style="left:38%;top:8%;width:24%;height:14%"></i><i style="left:16%;top:42%;width:68%;height:16%"></i><i style="left:27%;top:80%;width:46%;height:3%"></i></span>
+          Centred logo</button>
+      </div>
+      <label class="row">Logo size <input type="range" id="logoSize" min="8" max="28" value="16"></label>
+    </div>
+
+    <div class="group">
+      <h2 class="group-label">Voiceover</h2>
+      <div data-pane="tts" style="display:grid;gap:12px">
+        <div class="seg" role="radiogroup" aria-label="Voice" id="voiceSwitch">
+          <button role="radio" aria-checked="false" data-voice="male" tabindex="-1">Male</button>
+          <button role="radio" aria-checked="true" data-voice="female">Female</button>
+          <button role="radio" aria-checked="false" data-voice="neutral" tabindex="-1">Neutral</button>
+        </div>
+        <div style="display:grid;gap:8px">
+          <div class="field-head">
+            <label for="pronounce">Pronunciation</label>
+            <button class="ghost compact" id="hearBtn"><i data-lucide="volume-2"></i><span>Play sample</span></button>
+          </div>
+          <textarea class="field" id="pronounce" data-lpignore="true" data-1p-ignore data-bwignore data-form-type="other" rows="3" spellcheck="false" placeholder="Siobhan = shi vawn&#10;Nguyen = win"></textarea>
+        </div>
+        <button class="ghost compact mode-link" id="useRecording"><i data-lucide="mic"></i><span>Use your own recording instead</span></button>
+      </div>
+      <div data-pane="upload" class="hidden" style="display:grid;gap:12px">
+        <div class="drop" id="audioDrop" tabindex="0" role="button" aria-label="Add your recording">
+          <i data-lucide="file-audio"></i><strong>Add your recording</strong><span class="help">MP3, WAV, M4A or MP4. The words become your cards.</span>
+          <input type="file" accept="audio/*,video/mp4,video/quicktime,.m4a,.mov" hidden>
+        </div>
+        <div class="rec-file hidden" id="recFile">
+          <strong id="recName"></strong>
+          <audio id="voicePreview" controls></audio>
+          <button class="ghost compact" id="recReplace"><i data-lucide="refresh-cw"></i><span>Use a different recording</span></button>
+        </div>
+        <p class="help" id="recStatus" role="status" aria-live="polite"></p>
+        <button class="ghost compact mode-link" id="useVoice"><i data-lucide="audio-lines"></i><span>Use a created voice instead</span></button>
+      </div>
+    </div>
+
+    <div class="group">
+      <h2 class="group-label">Message style</h2>
+      <div class="tiles" role="radiogroup" aria-label="Message style" id="styleSwitch">
+        <button role="radio" aria-checked="false" data-style="plain" tabindex="-1"><span class="swatch" style="background:var(--color-base-black)"><span style="color:var(--color-base-white)">Aa</span></span>Plain</button>
+        <button role="radio" aria-checked="false" data-style="light" tabindex="-1"><span class="swatch"><span class="light">Aa</span></span>White box</button>
+        <button role="radio" aria-checked="false" data-style="outline" tabindex="-1"><span class="swatch"><span class="outline">Aa</span></span>Outline</button>
+        <button role="radio" aria-checked="true" data-style="dark"><span class="swatch"><span class="dark">Aa</span></span>Black box</button>
+      </div>
+      <label class="row">Message size <input type="range" id="subSize" min="3" max="7" step="0.25" value="5"></label>
+    </div>
+  </aside>
+</main>
+<p class="app-version">Version v14-dirty · Oct 21, 2026 1:11 PM</p>
+<script>{ const v = document.querySelector('.app-version'); if (v.textContent.includes('__')) v.textContent = 'Local preview (not published)'; }</script>
+
+<div class="scrim problem hidden" id="problemSheet" role="alertdialog" aria-modal="true" aria-labelledby="problemTitle" aria-describedby="problemText">
+  <div class="sheet">
+    <h2 id="problemTitle"></h2>
+    <p id="problemText"></p>
+    <p class="detail" id="problemDetail"></p>
+    <p class="tell">Still not working? Please notify Jay via Slack. Copy the details into your message so it can be fixed quickly.</p>
+    <div class="sheet-actions">
+      <button class="ghost" id="problemClose">Close</button>
+      <button class="primary" id="problemCopy">Copy details</button>
+    </div>
+  </div>
+</div>
+<div class="scrim hidden" id="exportSheet" role="dialog" aria-modal="true" aria-labelledby="title-exporting">
+  <div class="sheet">
+    <section data-step="exporting" class="hidden">
+      <h2 id="title-exporting">Exporting your greeting</h2>
+      <p class="meter-step" id="meterStep"></p>
+      <div class="meter" role="progressbar" aria-label="Export progress" aria-valuemin="0" aria-valuemax="100" id="meter"><div id="meterFill"></div></div>
+      <div class="meter-row"><span id="meterPct">0%</span><span id="meterTime"></span></div>
+      <p class="help">The greeting plays through once to record both sizes, so keep this tab open.</p>
+      <div class="sheet-actions"><button class="ghost" id="stopExport">Stop exporting</button></div>
+    </section>
+    <section data-step="ready" class="hidden">
+      <h2 id="title-ready">Your greeting is ready</h2>
+      <video class="ready-video" id="readyVideo" controls></video>
+      <div class="file-row"><span><strong id="name640"></strong><span class="help" id="size640"></span></span><button class="secondary compact" data-save="640">Save</button></div>
+      <div class="file-row"><span><strong id="name352"></strong><span class="help" id="size352"></span></span><button class="secondary compact" data-save="352">Save</button></div>
+      <div class="sheet-actions">
+        <button class="ghost" id="closeReady">Close</button>
+        <button class="primary" id="saveBoth"><i data-lucide="download"></i>Save both videos</button>
+      </div>
+    </section>
+  </div>
+</div>
+
+<script>
+const $ = s => document.querySelector(s);
+
+/* ---------- When something breaks: tell the viewer kindly, and ask them to tell Jay on Slack ---------- */
+const PROBLEMS = {
+  voice:   ['We couldn\u2019t create the voice', 'The voice didn\u2019t load this time. This is usually a short hiccup, so please try again in a minute.'],
+  speech:  ['We couldn\u2019t read your recording', 'The part that turns your recording into cards didn\u2019t load. Your recording is still here, so please try again in a minute.'],
+  export:  ['Your video didn\u2019t finish', 'Something went wrong while making your video files. Please try exporting again.'],
+  assets:  ['Part of this page didn\u2019t load', 'Some of the page\u2019s files didn\u2019t load, so things may look a little off. Refreshing the page usually fixes it.'],
+  unknown: ['Something unexpected happened', 'Sorry about that! Refreshing the page usually helps.'],
+};
+const PROBLEM_CODES = { voice: 'CG-VOICE', speech: 'CG-SPEECH', export: 'CG-EXPORT', assets: 'CG-ASSETS', unknown: 'CG-UNKNOWN' };
+// The last progress message shown ("Loading the voice model…"), so a report says what the page was doing
+let lastStep = '';
+const noteStep = msg => { if (msg) lastStep = String(msg).replace(/…$/, ''); };
+const clearStep = () => { lastStep = ''; }; // a task finished, so its step no longer explains anything
+let problemOpen = false, problemDetails = '';
+function reportProblem(kind, err) {
+  console.error(kind, err);
+  if (problemOpen) return; // one at a time; the first is the one that matters
+  const [title, text] = PROBLEMS[kind] || PROBLEMS.unknown;
+  const offline = navigator.onLine === false;
+  $('#problemTitle').textContent = title;
+  $('#problemText').textContent = (offline ? 'It looks like you\u2019re offline. Check your internet connection, then try again. ' : '') + text;
+  const code = PROBLEM_CODES[kind] || PROBLEM_CODES.unknown;
+  const message = String(err && (err.message || err) || 'no message').replace(/\s+/g, ' ').trim();
+  const step = kind === 'assets' ? 'Opening the page' : lastStep;
+  $('#problemDetail').textContent = [`Error ${code}`, step && `While: ${step}`, message.length > 140 ? message.slice(0, 140) + '…' : message].filter(Boolean).join(' · ');
+  problemDetails = [
+    `What happened: ${title}`,
+    `Error code: ${code}`,
+    `While: ${step || 'not known'}`,
+    `Error: ${message}`,
+    `Page: ${$('.app-version')?.textContent || ''}${window.self !== window.top ? ' (embedded)' : ''}`,
+    `Online: ${offline ? 'no' : 'yes'}`,
+    `Browser: ${navigator.userAgent}`,
+    `Time: ${new Date().toString()}`,
+  ].join('\n');
+  clearStep();
+  $('#problemCopy').textContent = 'Copy details';
+  $('#problemSheet').classList.remove('hidden');
+  problemOpen = true;
+  if (window.self !== window.top) window.parent.postMessage({ type: 'convo-greeting:scroll-top' }, '*');
+  $('#problemClose').focus();
+}
+$('#problemClose').addEventListener('click', () => { $('#problemSheet').classList.add('hidden'); problemOpen = false; });
+document.addEventListener('keydown', e => { if (e.key === 'Escape' && problemOpen) $('#problemClose').click(); });
+$('#problemCopy').addEventListener('click', async () => {
+  try { await navigator.clipboard.writeText(problemDetails); $('#problemCopy').textContent = 'Copied'; }
+  catch { $('#problemCopy').textContent = 'Could not copy'; }
+});
+// (Browsers report a harmless 'ResizeObserver loop' warning as an error; it is not a problem)
+window.addEventListener('error', e => { if (e.message && !/ResizeObserver loop/.test(e.message)) reportProblem('unknown', e.error || e.message); });
+window.addEventListener('unhandledrejection', e => reportProblem('unknown', e.reason));
+window.addEventListener('load', () => { if (window.assetFailed) reportProblem('assets', 'Did not load: ' + window.assetFailed.join(', ')); });
+const token = name => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+const icons = () => window.lucide && lucide.createIcons();
+const clamp = v => Math.max(0, Math.min(1, v));
+function cubicBezier(x1, y1, x2, y2) {
+  const bx = t => 3 * x1 * t * (1 - t) ** 2 + 3 * x2 * t * t * (1 - t) + t ** 3;
+  const by = t => 3 * y1 * t * (1 - t) ** 2 + 3 * y2 * t * t * (1 - t) + t ** 3;
+  return x => {
+    x = clamp(x);
+    let lo = 0, hi = 1;
+    for (let k = 0; k < 30; k++) { const m = (lo + hi) / 2; if (bx(m) < x) lo = m; else hi = m; }
+    return by((lo + hi) / 2);
+  };
+}
+// The brand's motion-easing-out curve, read from the brand stylesheet
+const ease = (() => {
+  const v = (token('--motion-easing-out').match(/[\d.]+/g) || []).map(Number);
+  return cubicBezier(...(v.length === 4 ? v : [0.16, 1, 0.3, 1]));
+})();
+
+const cv = $('#cv'), ctx = cv.getContext('2d');
+const W = cv.width, H = cv.height;
+const MAX_CARDS = 6;
+const MAX_REC_CARDS = 10, MAX_REC_SECONDS = 90; // cards made from a recording, and its longest length
+const INTRO = 0.7, TAIL = 0.6;     // seconds of opening animation before the voice, and hold after it
+// Brand motion timings (Motion section). Fixed here, because they are part of the video itself.
+const BRAND_MOMENT = 0.7;          // motion-duration-brand: the opening arrives within 700ms
+const WAVE = 0.08;                 // motion-stagger-brand: parts arrive 80ms apart
+const PART = BRAND_MOMENT - 2 * WAVE;
+const CARD_IN = 0.36;              // motion-duration-large: each later card grows in
+const CARD_OUT = 0.24;             // motion-duration-large-exit: and the card before it leaves
+// Message card on Felt values, in video pixels
+const PAD_X = 40, PAD_Y = 28, RADIUS = 24; // felt-space-l, felt-space-m, felt-radius-l
+const MIN_FS = 28;                 // never smaller than brand body size for video and social
+const FONT = 'Inter, system-ui, -apple-system, Helvetica, Arial, sans-serif';
+const EXPORTS = [ { key: '640', w: 640, h: 480, bits: 2_000_000 }, { key: '352', w: 352, h: 288, bits: 800_000 } ];
+const MP4 = ['video/mp4;codecs=avc1.42E01E,mp4a.40.2', 'video/mp4;codecs=avc1.42E01E', 'video/mp4'];
+const WAIT_LINE = 'Stay on to leave a videomail';
+
+const state = {
+  bg: null, logo: null, layout: 'profile',
+  name: '', title: '',
+  cards: ['Please leave a message and contact information. Thank you.'],
+  aligns: ['center'],
+  active: 0,
+  mode: 'tts', gender: 'female', msgStyle: 'dark',
+  ttsVoice: null,     // { buffer, timeline, key }: the created voice, its exact card timings, and what it was made from
+  uploadBuffer: null, // an uploaded recording, decoded
+  uploadTimes: null,  // [{ start, end }] per card, from the words in the recording
+  playing: false, stopFn: null,
+};
+let audioCtx;
+const getAudioCtx = () => (audioCtx ||= new (window.AudioContext || window.webkitAudioContext)());
+const status = (msg, tone) => { if (tone !== 'error') noteStep(msg); $('#status').textContent = msg || ''; $('#status').dataset.tone = tone || ''; };
+// Tidy a card: collapse spaces, keep line breaks and single blank lines between paragraphs
+const normCard = text => text.replace(/\r/g, '').split('\n').map(l => l.replace(/[ \t ]+/g, ' ').trim())
+  .join('\n').replace(/\n{3,}/g, '\n\n').trim();
+const cardTexts = () => state.cards.map(normCard).filter(Boolean);
+const cardItems = () => state.cards.map((t, i) => ({ text: normCard(t), align: state.aligns[i] || 'center' })).filter(c => c.text);
+
+// White wordmark in dark mode (app chrome)
+const darkQ = matchMedia('(prefers-color-scheme: dark)');
+const setMark = () => $('#wordmark').src = `https://brand.convo.io/cdn/v1/assets/logo/wordmark/Convo_Wordmark_${darkQ.matches ? 'Light' : 'Evergreen'}.svg`;
+setMark(); darkQ.addEventListener('change', setMark);
+
+// Lucide "video" icon, as drawn, for the end of the progress bar
+const videoIcon = (() => {
+  const node = window.lucide?.icons?.Video?.[2] ||
+    [['path', { d: 'm16 13 5.223 3.482a.5.5 0 0 0 .777-.416V7.87a.5.5 0 0 0-.752-.432L16 10.5' }], ['rect', { x: 2, y: 6, width: 14, height: 12, rx: 2 }]];
+  const p = new Path2D();
+  for (const [tag, a] of node) {
+    if (tag === 'path') p.addPath(new Path2D(a.d));
+    if (tag === 'rect') p.roundRect(+a.x, +a.y, +a.width, +a.height, +(a.rx || 0));
+  }
+  return p;
+})();
+
+/* ---------- Phone number and file names ---------- */
+const phoneDigits = () => $('#phone').value.replace(/\D/g, '');
+const fileName = ex => `${phoneDigits() || 'fullphonenumber'}_${ex.w}x${ex.h}.mp4`;
+function syncFileHint() {
+  const d = phoneDigits(), hint = $('#fileHint');
+  const short = d && d.length < 10;
+  hint.textContent = short ? 'Add the full phone number, including the area code.' : '';
+  hint.dataset.tone = short ? 'error' : '';
+  hint.classList.toggle('hidden', !short);
+}
+// Shown as (301) 266-7466, at most 10 digits
+const formatPhone = d => d.length < 4 ? d : d.length < 7 ? `(${d.slice(0, 3)}) ${d.slice(3)}` : `(${d.slice(0, 3)}) ${d.slice(3, 6)}-${d.slice(6)}`;
+// Once there are 10 digits, block more unless they replace a selection
+$('#phone').addEventListener('beforeinput', e => {
+  const el = e.target;
+  if (!e.inputType.startsWith('insert') || !/\d/.test(e.data ?? '')) return;
+  if (phoneDigits().length >= 10 && el.selectionStart === el.selectionEnd) e.preventDefault();
+});
+$('#phone').addEventListener('input', e => {
+  const el = e.target;
+  let digits = el.value.replace(/\D/g, '');
+  let caret = el.value.slice(0, el.selectionStart).replace(/\D/g, '').length;
+  // US numbers never start with 1, so a leading 1 is the country code
+  if (digits[0] === '1') { digits = digits.slice(1); caret = Math.max(0, caret - 1); }
+  digits = digits.slice(0, 10); caret = Math.min(caret, digits.length);
+  const deleting = e.inputType?.startsWith('delete');
+  // Backspacing over ")" or "-" leaves the format alone: show the digits unformatted until more are typed
+  el.value = deleting && digits.length < 4 ? digits : formatPhone(digits);
+  let pos = 0, seen = 0;
+  while (pos < el.value.length && seen < caret) { if (/\d/.test(el.value[pos])) seen++; pos++; }
+  el.setSelectionRange(pos, pos);
+  syncFileHint();
+});
+syncFileHint();
+
+/* ---------- Mode switches (one tab stop, arrow keys move) ---------- */
+function setupSeg(el, onChange) {
+  const opts = [...el.querySelectorAll('[role=radio]')];
+  const select = (b, focus) => {
+    opts.forEach(o => { const on = o === b; o.setAttribute('aria-checked', on); o.tabIndex = on ? 0 : -1; });
+    if (focus) b.focus();
+    onChange(b);
+  };
+  opts.forEach(b => b.addEventListener('click', () => select(b)));
+  el.addEventListener('keydown', e => {
+    const i = opts.findIndex(o => o.getAttribute('aria-checked') === 'true');
+    const d = { ArrowRight: 1, ArrowDown: 1, ArrowLeft: -1, ArrowUp: -1 }[e.key];
+    if (d) { e.preventDefault(); select(opts[(i + d + opts.length) % opts.length], true); }
+  });
+}
+setupSeg($('#voiceSwitch'), b => { stopPreview(); state.gender = b.dataset.voice; });
+$('#pronounce').addEventListener('input', () => stopPreview());
+setupSeg($('#styleSwitch'), b => { state.msgStyle = b.dataset.style; refresh(); });
+setupSeg($('#layoutSwitch'), b => { state.layout = b.dataset.layout; refresh(); });
+
+/* ---------- Layout geometry (video pixels, scaled for thumbnails) ---------- */
+function geometry(w, h) {
+  const k = w / W, profile = state.layout === 'profile';
+  const g = { k, profile, msgY: h * 0.5, msgMaxH: h * 0.4 };
+  // Logo: top right beside the name, or top centre
+  const size = +$('#logoSize').value / 16;
+  if (state.logo) {
+    const box = profile ? { w: h * 0.19 * size, h: h * 0.19 * size } : { w: w * 0.21 * size, h: h * 0.16 * size };
+    const s = Math.min(box.w / state.logo.width, box.h / state.logo.height);
+    const lw = state.logo.width * s, lh = state.logo.height * s;
+    g.logo = profile ? { x: w * 0.925 - lw, y: h * 0.085, w: lw, h: lh } : { x: (w - lw) / 2, y: h * 0.06, w: lw, h: lh };
+  }
+  g.logoSlot = g.logo || (profile ? { x: w * 0.925 - h * 0.19, y: h * 0.085, w: h * 0.19, h: h * 0.19 } : { x: w * 0.36, y: h * 0.06, w: w * 0.28, h: h * 0.1 });
+  // Name and title: top left, kept clear of the logo
+  g.headX = w * 0.075;
+  g.headMaxW = (profile ? g.logoSlot.x - w * 0.04 : w * 0.85) - g.headX;
+  g.nameY = h * 0.15; g.nameFs = 56 * k;
+  g.titleY = h * 0.222; g.titleFs = 38 * k;
+  return g;
+}
+// Shrink a single line until it fits its width
+function fitLine(c, text, maxW, fs, weight) {
+  const min = fs * 0.6;
+  for (;;) {
+    c.font = `${weight} ${fs}px ${FONT}`;
+    if (c.measureText(text).width <= maxW || fs <= min) return fs;
+    fs = Math.max(min, fs * 0.95);
+  }
+}
+
+/* ---------- Rendering (one function for the stage, thumbnails and export) ---------- */
+function wrap(c, text, maxW) {
+  const words = text.split(' '), lines = [];
+  let line = '';
+  for (const w of words) {
+    const test = line ? line + ' ' + w : w;
+    if (c.measureText(test).width > maxW && line) { lines.push(line); line = w; } else line = test;
+  }
+  if (line) lines.push(line);
+  return lines;
+}
+// Font size for a message: the chosen size, shrunk to fit, but never below the brand minimum.
+// tooLong means it still does not fit at the minimum, so the card should be shortened.
+function fitMessage(c, text, w, h) {
+  const k = w / W, maxH = h * 0.4;
+  let fs = Math.round(h * (+$('#subSize').value / 100)), lines, tooLong = false;
+  for (;;) {
+    c.font = `400 ${fs}px ${FONT}`;
+    lines = text.split('\n').flatMap(p => p.trim() ? wrap(c, p, w * 0.78) : ['']);
+    if (lines.length * fs * 1.3 <= maxH) break;
+    if (fs <= MIN_FS * k) { tooLong = true; break; }
+    fs = Math.max(MIN_FS * k, Math.floor(fs * 0.92));
+  }
+  const bw = Math.max(...lines.map(l => c.measureText(l).width)) + PAD_X * 2 * k;
+  return { fs, lines, bw, tooLong };
+}
+const cardWidth = (bw, w, align) => align === 'center' ? bw : w * 0.78 + PAD_X * 2 * (w / W);
+// Message styles. Boxes are solid: brand colour is never see-through.
+function msgLook() {
+  return {
+    plain:   { ink: '--color-base-white', box: null, stroke: false },
+    dark:    { ink: '--color-base-white', box: '--color-base-black', stroke: false },
+    light:   { ink: '--color-base-black', box: '--color-base-white', stroke: false },
+    outline: { ink: '--color-base-white', box: null, stroke: true },
+  }[state.msgStyle];
+}
+function roundRect(c, x, y, w, h, r) {
+  c.beginPath();
+  c.moveTo(x + r, y); c.arcTo(x + w, y, x + w, y + h, r); c.arcTo(x + w, y + h, x, y + h, r);
+  c.arcTo(x, y + h, x, y, r); c.arcTo(x, y, x + w, y, r); c.closePath();
+}
+
+// opts: caption, align, progress (0..1), editing (skip text the stage edits in place), fx (animation)
+function render(c, { caption = '', align = 'center', progress = 0, editing = false, fx = {} } = {}) {
+  const { bgAlpha = 1, partAlpha = 1, partDy = 0, msgAlpha = 1, msgScale = 1, msgDy = 0 } = fx;
+  const w = c.canvas.width, h = c.canvas.height, g = geometry(w, h), k = g.k;
+  const black = token('--color-base-black'), white = token('--color-base-white');
+
+  // Background: Black, or the dropped image
+  c.fillStyle = black; c.fillRect(0, 0, w, h);
+  if (state.bg) {
+    c.globalAlpha = bgAlpha;
+    const s = Math.max(w / state.bg.width, h / state.bg.height);
+    const bw = state.bg.width * s, bh = state.bg.height * s;
+    c.drawImage(state.bg, (w - bw) / 2, (h - bh) / 2, bw, bh);
+    c.globalAlpha = 1;
+  }
+
+  // Logo, name and title arrive together as the second part of the opening
+  c.save();
+  c.globalAlpha = partAlpha; c.translate(0, partDy * h);
+  if (g.logo) c.drawImage(state.logo, g.logo.x, g.logo.y, g.logo.w, g.logo.h);
+  if (g.profile && !editing) {
+    c.textAlign = 'left'; c.textBaseline = 'middle'; c.fillStyle = white;
+    if (state.name.trim()) {
+      c.font = `500 ${fitLine(c, state.name.trim(), g.headMaxW, g.nameFs, 500)}px ${FONT}`;
+      c.fillText(state.name.trim(), g.headX, g.nameY);
+    }
+    if (state.title.trim()) {
+      c.font = `400 ${fitLine(c, state.title.trim(), g.headMaxW, g.titleFs, 400)}px ${FONT}`;
+      c.fillText(state.title.trim(), g.headX, g.titleY);
+    }
+  }
+  c.restore();
+
+  // Message card in the middle
+  if (caption && msgAlpha > 0) {
+    const { fs, lines, bw } = fitMessage(c, caption, w, h);
+    const padX = PAD_X * k, look = msgLook(), lh = fs * 1.3, blockH = lines.length * lh, bh = blockH + PAD_Y * 2 * k;
+    // Text aligns inside the box. Left and right use the full card width so the alignment shows.
+    const cw = cardWidth(bw, w, align), bx = (w - cw) / 2, cy = g.msgY;
+    c.save();
+    c.globalAlpha = msgAlpha;
+    c.translate(w / 2, cy + msgDy * h); c.scale(msgScale, msgScale); c.translate(-w / 2, -cy);
+    if (look.box) { c.fillStyle = token(look.box); roundRect(c, bx, cy - bh / 2, cw, bh, RADIUS * k); c.fill(); }
+    c.textAlign = align; c.textBaseline = 'middle';
+    const x = align === 'left' ? bx + padX : align === 'right' ? bx + cw - padX : w / 2;
+    let y = cy - blockH / 2 + lh / 2;
+    c.lineJoin = 'round'; c.lineWidth = fs * 0.14; c.strokeStyle = black;
+    c.fillStyle = token(look.ink);
+    for (const l of lines) { if (look.stroke) c.strokeText(l, x, y); c.fillText(l, x, y); y += lh; }
+    c.restore();
+  }
+
+  // Bottom: "Stay on to leave a videomail" and the progress bar with a video icon
+  c.save();
+  c.globalAlpha = partAlpha;
+  c.textAlign = 'center'; c.textBaseline = 'middle';
+  c.fillStyle = white; c.font = `500 ${32 * k}px ${FONT}`;
+  c.fillText(WAIT_LINE, w / 2, h * 0.83);
+  const barW = w * 0.45, barH = Math.max(2, 10 * k), icon = 60 * k, gap = 18 * k;
+  const gx = (w - (barW + gap + icon)) / 2, barY = h * 0.9;
+  c.fillStyle = token('--color-neutral-700');
+  roundRect(c, gx, barY - barH / 2, barW, barH, barH / 2); c.fill();
+  if (progress > 0) {
+    c.fillStyle = token('--color-signal-evergreen');
+    roundRect(c, gx, barY - barH / 2, Math.max(barH, barW * clamp(progress)), barH, barH / 2); c.fill();
+  }
+  c.save();
+  c.translate(gx + barW + gap, barY - icon / 2); c.scale(icon / 24, icon / 24);
+  c.strokeStyle = white; c.lineWidth = 2; c.lineCap = 'round'; c.lineJoin = 'round';
+  c.stroke(videoIcon);
+  c.restore();
+  c.restore();
+}
+
+/* ---------- Stage: canvas below, editable text on top ---------- */
+const stage = $('#stage'), msgEdit = $('#msgEdit'), nameEdit = $('#nameEdit'), titleEdit = $('#titleEdit');
+const LONG_CARD = 'This card is long. Shorten it, or move some of it to a new card, so it stays easy to read.';
+const pct = (v, of) => (v / of * 100) + '%';
+
+function drawStage() {
+  if (state.playing) return;
+  render(ctx, { editing: true });
+  const g = geometry(W, H);
+  // Message: sized and styled exactly like the canvas draws it
+  const text = normCard(state.cards[state.active]) || msgEdit.placeholder;
+  const { fs, bw, tooLong } = fitMessage(ctx, text, W, H);
+  const look = msgLook(), align = state.aligns[state.active] || 'center';
+  stage.style.setProperty('--fs', fs);
+  stage.style.setProperty('--bw', cardWidth(bw, W, align));
+  stage.style.setProperty('--ink', token(look.ink));
+  stage.style.setProperty('--box', look.box ? token(look.box) : 'transparent');
+  stage.style.setProperty('--stroke', look.stroke ? fs * 0.14 : 0);
+  stage.style.setProperty('--align', align);
+  msgEdit.style.height = 'auto';
+  msgEdit.style.height = msgEdit.scrollHeight + 'px';
+  if (tooLong) status(LONG_CARD);
+  else if ($('#status').textContent === LONG_CARD) status('');
+  document.querySelectorAll('#alignSwitch [role=radio]').forEach(b => {
+    const on = b.dataset.align === align; b.setAttribute('aria-checked', on); b.tabIndex = on ? 0 : -1;
+  });
+  // Name and title fields, over where they draw
+  [[nameEdit, state.name, g.nameY, g.nameFs, 500], [titleEdit, state.title, g.titleY, g.titleFs, 400]].forEach(([el, val, y, base, weight]) => {
+    el.classList.toggle('hidden', !g.profile);
+    const fsz = fitLine(ctx, val.trim() || el.placeholder, g.headMaxW, base, weight);
+    Object.assign(el.style, { left: pct(g.headX, W), top: pct(y - fsz * 0.65, H), width: pct(g.headMaxW, W), height: pct(fsz * 1.3, H),
+                              fontSize: `calc(${fsz} * var(--u))` });
+  });
+  // Logo slot: over the logo, or a prompt where it will go
+  const lr = g.logoSlot, slot = $('#logoSlot');
+  Object.assign(slot.style, { left: pct(lr.x, W), top: pct(lr.y, H), width: pct(lr.w, W), height: pct(lr.h, H), borderRadius: g.profile && !state.logo ? '50%' : '' });
+  slot.classList.toggle('empty', !state.logo);
+  slot.querySelector('span').classList.toggle('hidden', !!state.logo);
+  slot.querySelector('svg')?.classList.toggle('hidden', !!state.logo);
+  slot.setAttribute('aria-label', state.logo ? 'Replace logo' : 'Add your logo');
+  Object.assign($('#logoRemove').style, { left: `calc(${pct(lr.x + lr.w, W)} - 14px)`, top: `calc(${pct(lr.y, H)} - 14px)` });
+  $('#logoRemove').classList.toggle('hidden', !state.logo);
+}
+const refresh = () => { drawStage(); drawThumbs(); };
+// A preview plays a snapshot of the cards and voice; changing them stops it (exports are locked behind their dialog)
+const stopPreview = () => { if (state.playing && !exportStep) state.stopFn(); };
+
+msgEdit.addEventListener('input', () => { stopPreview(); state.cards[state.active] = msgEdit.value; drawStage(); drawThumb(state.active); });
+nameEdit.addEventListener('input', () => { state.name = nameEdit.value; refresh(); });
+titleEdit.addEventListener('input', () => { state.title = titleEdit.value; refresh(); });
+[msgEdit, nameEdit, titleEdit].forEach(el => el.addEventListener('keydown', e => { if (e.key === 'Escape') el.blur(); }));
+[nameEdit, titleEdit].forEach(el => el.addEventListener('keydown', e => { if (e.key === 'Enter') el.blur(); }));
+setupSeg($('#alignSwitch'), b => { state.aligns[state.active] = b.dataset.align; drawStage(); drawThumb(state.active); });
+['#logoSize', '#subSize'].forEach(s => $(s).addEventListener('input', refresh));
+new ResizeObserver(() => drawStage()).observe(stage);
+
+/* ---------- Card strip ---------- */
+function renderStrip() {
+  const strip = $('#strip');
+  strip.innerHTML = '';
+  state.cards.forEach((_, i) => {
+    const wrapEl = document.createElement('div');
+    wrapEl.className = 'thumb-wrap';
+    wrapEl.innerHTML = `<button class="thumb" aria-pressed="${i === state.active}" aria-label="Card ${i + 1}">
+        <canvas width="256" height="192"></canvas><span>Card ${i + 1}</span></button>
+      ${state.cards.length > 1 ? `<button class="icon thumb-del" aria-label="Remove card ${i + 1}"><i data-lucide="x"></i></button>` : ''}`;
+    wrapEl.querySelector('.thumb').addEventListener('click', () => selectCard(i));
+    wrapEl.querySelector('.thumb-del')?.addEventListener('click', () => {
+      stopPreview();
+      state.cards.splice(i, 1); state.aligns.splice(i, 1);
+      selectCard(Math.min(state.active > i ? state.active - 1 : state.active, state.cards.length - 1));
+    });
+    strip.appendChild(wrapEl);
+  });
+  const add = document.createElement('button');
+  add.className = 'add-tile';
+  add.innerHTML = '<i data-lucide="plus"></i><span>Add card</span>';
+  add.disabled = state.cards.length >= MAX_CARDS;
+  add.addEventListener('click', () => {
+    stopPreview();
+    state.cards.push(''); state.aligns.push(state.aligns[state.active] || 'center');
+    selectCard(state.cards.length - 1);
+    msgEdit.focus();
+  });
+  strip.appendChild(add);
+  icons(); drawThumbs();
+}
+function drawThumb(i) {
+  const c = $('#strip').children[i]?.querySelector('canvas');
+  if (c) render(c.getContext('2d'), { caption: normCard(state.cards[i]), align: state.aligns[i] });
+}
+const drawThumbs = () => state.cards.forEach((_, i) => drawThumb(i));
+function selectCard(i) {
+  state.active = i;
+  msgEdit.value = state.cards[i];
+  renderStrip(); drawStage();
+}
+
+/* ---------- Images: drop onto the video ---------- */
+function loadImage(file, key) {
+  if (!file || !file.type.startsWith('image/')) return status('That file is not an image. Try PNG, JPG or SVG.', 'error');
+  const img = new Image();
+  img.onload = () => { state[key] = img; refresh(); };
+  img.src = URL.createObjectURL(file);
+}
+$('#logoSlot').addEventListener('click', () => $('#logoInput').click());
+$('#logoInput').addEventListener('change', e => { loadImage(e.target.files[0], 'logo'); e.target.value = ''; });
+$('#logoRemove').addEventListener('click', () => { state.logo = null; refresh(); });
+
+stage.addEventListener('dragover', e => {
+  e.preventDefault();
+  $('#logoSlot').classList.add('over');
+});
+stage.addEventListener('dragleave', e => {
+  if (!stage.contains(e.relatedTarget)) { stage.classList.remove('over-bg'); $('#logoSlot').classList.remove('over'); }
+});
+stage.addEventListener('drop', e => {
+  e.preventDefault();
+  stage.classList.remove('over-bg'); $('#logoSlot').classList.remove('over');
+  const file = e.dataTransfer.files[0];
+  if (file?.type.startsWith('image/')) loadImage(file, 'logo');
+});
+// Stop the browser from opening files dropped elsewhere
+['dragover', 'drop'].forEach(ev => window.addEventListener(ev, e => e.preventDefault()));
+
+/* ---------- Your own recording: read the words, make the cards ---------- */
+// Whisper runs in its own background worker, in the browser, so the recording never leaves the computer.
+const STT_WORKER = `
+import { pipeline } from 'https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.5.1';
+let asr;
+self.onmessage = async ({ data }) => {
+  try {
+    asr ||= await pipeline('automatic-speech-recognition', 'onnx-community/whisper-base.en', {
+      dtype: 'q8', device: 'wasm',
+      progress_callback: p => { if (p.status === 'progress' && p.file.endsWith('.onnx')) self.postMessage({ type: 'progress', progress: p.progress }); },
+    });
+    self.postMessage({ type: 'listening' });
+    // One piece of at most 30 seconds at a time (the page splits longer recordings at pauses)
+    const out = await asr(data.audio, { return_timestamps: true });
+    self.postMessage({ type: 'done', chunks: out.chunks || [{ text: out.text, timestamp: [0, null] }] });
+  } catch (e) {
+    self.postMessage({ type: 'error', message: String(e && e.message || e) });
+  }
+};`;
+let sttWorker = null;
+function transcribePiece(audio, report) {
+  return new Promise((resolve, reject) => {
+    sttWorker ||= new Worker(URL.createObjectURL(new Blob([STT_WORKER], { type: 'text/javascript' })), { type: 'module' });
+    sttWorker.onmessage = ({ data }) => {
+      if (data.type === 'progress') report(`Downloading the speech model: ${Math.round(data.progress)}%`);
+      else if (data.type === 'listening') report('Listening to your recording…');
+      else if (data.type === 'done') resolve(data.chunks);
+      else reject(new Error(data.message));
+    };
+    sttWorker.onerror = e => { sttWorker.terminate(); sttWorker = null; reject(new Error(e.message || 'The speech engine stopped')); };
+    sttWorker.postMessage({ audio }, [audio.buffer]);
+  });
+}
+// Whisper hears 30 seconds at a time, and its own long-audio mode can drop the end.
+// So longer recordings are cut at the quietest moment between 15 and 25 seconds, read piece by piece, and joined.
+async function transcribe(samples, report) {
+  const RATE = 16000, MAX = 25 * RATE, MIN = 15 * RATE, WIN = 0.1 * RATE;
+  const chunks = [];
+  for (let from = 0; from < samples.length;) {
+    let to = samples.length;
+    if (to - from > 30 * RATE) {
+      let best = from + MAX, quietest = Infinity;
+      for (let i = from + MIN; i + WIN <= from + MAX; i += WIN / 2) {
+        let e = 0; for (let j = i; j < i + WIN; j++) e += samples[j] * samples[j];
+        if (e < quietest) { quietest = e; best = i + WIN / 2; }
+      }
+      to = Math.round(best);
+    }
+    const offset = from / RATE, pieceEnd = to / RATE;
+    const piece = await transcribePiece(samples.slice(from, to), report);
+    piece.forEach(c => chunks.push({ text: c.text, timestamp: [offset + (c.timestamp[0] ?? 0), c.timestamp[1] == null ? pieceEnd : offset + c.timestamp[1]] }));
+    from = to;
+  }
+  return chunks;
+}
+// Whisper listens at 16 kHz, mono
+async function toMono16k(buffer) {
+  const off = new OfflineAudioContext(1, Math.ceil(buffer.duration * 16000), 16000);
+  const src = off.createBufferSource(); src.buffer = buffer; src.connect(off.destination); src.start();
+  return (await off.startRendering()).getChannelData(0);
+}
+// Words with times -> sentences -> cards that fit on screen (at most MAX_REC_CARDS).
+// A piece of text inside a timed chunk gets a share of its time by length.
+function splitTimed(text, start, end, pieces) {
+  const total = pieces.reduce((n, p) => n + p.length, 0) || 1;
+  let t = start;
+  return pieces.map(p => { const s = t; t += (end - start) * p.length / total; return { text: p, start: s, end: t }; });
+}
+function cardsFromChunks(chunks, duration) {
+  // 1. Every word with a time (shared out within its chunk by length), then sentences built from the words,
+  //    so a sentence that runs across two chunks stays together
+  const words = [];
+  chunks.forEach((c, i) => {
+    const parts = c.text.trim().split(/\s+/).filter(Boolean); if (!parts.length) return;
+    const start = c.timestamp[0] ?? 0;
+    const end = c.timestamp[1] ?? chunks[i + 1]?.timestamp[0] ?? duration;
+    words.push(...splitTimed(c.text, start, Math.max(start, end), parts));
+  });
+  const sentences = [];
+  let cur = null;
+  for (const w of words) {
+    if (cur) { cur.text += ' ' + w.text; cur.end = w.end; } else cur = { ...w };
+    if (/[.!?]["')\]]*$/.test(w.text)) { sentences.push(cur); cur = null; }
+  }
+  if (cur) sentences.push(cur);
+  if (!sentences.length) return [];
+  // 2. Fill cards up to a length that keeps the text large; allow longer cards only to stay within MAX_REC_CARDS
+  const totalChars = sentences.reduce((n, x) => n + x.text.length + 1, 0);
+  for (let limit = Math.max(110, Math.ceil(totalChars / MAX_REC_CARDS)); ; limit = Math.ceil(limit * 1.15)) {
+    const cards = [];
+    for (const sen of sentences) {
+      // A sentence longer than a card is split between words
+      const pieces = [];
+      if (sen.text.length <= limit) pieces.push(sen.text);
+      else {
+        let line = '';
+        for (const w of sen.text.split(/\s+/)) {
+          if (line && (line + ' ' + w).length > limit) { pieces.push(line); line = w; } else line = line ? line + ' ' + w : w;
+        }
+        if (line) pieces.push(line);
+      }
+      for (const piece of splitTimed(sen.text, sen.start, sen.end, pieces)) {
+        const last = cards[cards.length - 1];
+        if (last && (last.text + ' ' + piece.text).length <= limit) { last.text += ' ' + piece.text; last.end = piece.end; }
+        else cards.push({ ...piece });
+      }
+    }
+    if (cards.length <= MAX_REC_CARDS) {
+      // No gaps: each card stays up until the next one starts; the first starts with the voice, the last holds to the end
+      cards.forEach((c, i) => { c.start = i ? c.start : 0; c.end = cards[i + 1]?.start ?? duration; });
+      return cards;
+    }
+  }
+}
+const recStatus = (msg, tone = '') => { if (tone !== 'error') noteStep(msg); $('#recStatus').textContent = msg; $('#recStatus').dataset.tone = tone; };
+let reading = false;
+async function setRecording(file) {
+  if (reading) return;
+  const ok = file && (file.type.startsWith('audio/') || file.type.startsWith('video/') || /\.(m4a|mp3|wav|mp4|mov)$/i.test(file.name));
+  if (!ok) return recStatus('That file is not a recording. Try MP3, WAV, M4A or MP4.', 'error');
+  stopPreview();
+  reading = true;
+  $('#playBtn').disabled = $('#exportBtn').disabled = true;
+  $('#audioDrop').classList.add('hidden');
+  try {
+    recStatus('Opening your recording…');
+    let buffer;
+    try { buffer = await getAudioCtx().decodeAudioData(await file.arrayBuffer()); }
+    catch { throw new Error('unreadable'); }
+    if (buffer.duration > MAX_REC_SECONDS) throw new Error('too-long');
+    state.uploadBuffer = buffer; state.uploadTimes = null;
+    $('#recName').textContent = file.name;
+    $('#voicePreview').src = URL.createObjectURL(file);
+    $('#recFile').classList.remove('hidden');
+    noteStep('Reading the words in your recording');
+    const chunks = await transcribe(await toMono16k(buffer), msg => recStatus(msg));
+    const cards = cardsFromChunks(chunks, buffer.duration);
+    if (!cards.length) { recStatus('No words were heard in this recording. You can still type your cards.', 'error'); return; }
+    state.cards = cards.map(c => c.text);
+    state.aligns = cards.map(() => 'center');
+    state.uploadTimes = cards.map(({ start, end }) => ({ start, end }));
+    selectCard(0);
+    recStatus(`${cards.length === 1 ? 'One card was' : cards.length + ' cards were'} made from your recording. Check the words and fix anything that was misheard.`);
+  } catch (e) {
+    // The person's file: say so beside it. Anything else is the speech tool not working
+    if (e.message === 'unreadable' || e.message === 'too-long') {
+      clearRecording();
+      recStatus(e.message === 'unreadable' ? 'That file could not be read. Try MP3, WAV, M4A or MP4.' : 'That recording is longer than 90 seconds. Please use a shorter one.', 'error');
+    } else {
+      recStatus('');
+      reportProblem('speech', e);
+    }
+  } finally {
+    reading = false; clearStep();
+    $('#playBtn').disabled = $('#exportBtn').disabled = false;
+  }
+}
+function clearRecording() {
+  state.uploadBuffer = null; state.uploadTimes = null;
+  $('#recFile').classList.add('hidden'); $('#audioDrop').classList.remove('hidden');
+  $('#voicePreview').removeAttribute('src');
+}
+function setMode(mode) {
+  if (reading) return;
+  stopPreview();
+  state.mode = mode;
+  document.querySelectorAll('[data-pane]').forEach(p => p.classList.toggle('hidden', p.dataset.pane !== mode));
+  if (mode === 'tts') recStatus('');
+}
+$('#useRecording').addEventListener('click', () => setMode('upload'));
+$('#useVoice').addEventListener('click', () => setMode('tts'));
+(() => {
+  const el = $('#audioDrop'), input = el.querySelector('input');
+  el.addEventListener('click', () => input.click());
+  el.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); input.click(); } });
+  input.addEventListener('change', () => { setRecording(input.files[0]); input.value = ''; });
+  el.addEventListener('dragover', e => { e.preventDefault(); el.classList.add('over'); });
+  el.addEventListener('dragleave', () => el.classList.remove('over'));
+  el.addEventListener('drop', e => { e.preventDefault(); el.classList.remove('over'); setRecording(e.dataTransfer.files[0]); });
+  $('#recReplace').addEventListener('click', () => input.click());
+})();
+
+/* ---------- Card timing ---------- */
+// Cards made from a recording show while their words are spoken. If cards were added or removed since, fall back to sharing by length.
+function uploadTimeline() {
+  const cards = cardTexts(), times = state.uploadTimes;
+  return times && times.length === cards.length ? cards.map((text, i) => ({ text, ...times[i] })) : null;
+}
+// Without exact timings (uploaded audio), cards share the duration by text length
+function timeline(cards, duration) {
+  const weights = cards.map(c => c.length + 10);
+  const total = weights.reduce((a, b) => a + b, 0);
+  let t = 0;
+  return cards.map((text, i) => {
+    const start = t; t += duration * weights[i] / total;
+    return { text, start, end: t };
+  });
+}
+const estimateDuration = cards => Math.max(3, cards.join(' ').split(/\s+/).length / 2.5 + 0.5);
+// The voice in use: the uploaded file, or the created voice if it still matches the cards, voice and pronunciations
+const voiceKey = () => JSON.stringify([state.gender, cardTexts(), pronunciations()]);
+const activeVoice = () => state.mode === 'upload'
+  ? (state.uploadBuffer && { buffer: state.uploadBuffer, timeline: uploadTimeline() })
+  : (state.ttsVoice?.key === voiceKey() ? state.ttsVoice : null);
+const needsVoice = () => state.mode === 'tts' && !activeVoice();
+const voiceDuration = () => activeVoice()?.buffer.duration ?? estimateDuration(cardTexts());
+const totalDuration = () => INTRO + voiceDuration() + TAIL;
+const cardIndexAt = (tl, t) => { const i = tl.findIndex(c => t >= c.start && t < c.end); return i < 0 ? tl.length - 1 : i; };
+
+/* ---------- Text to voice (Kokoro, runs in the browser, regular pace) ---------- */
+// Kokoro has no truly gender-neutral voice; "Neutral" uses its calmest, least pitched voice.
+const VOICES = { female: 'af_heart', male: 'am_michael', neutral: 'af_sky' };
+// Kokoro runs in a background worker: creating speech is heavy, and on the page itself it would freeze everything.
+const TTS_WORKER = `
+import { KokoroTTS } from 'https://cdn.jsdelivr.net/npm/kokoro-js@1.2.1/+esm';
+let tts;
+self.onmessage = async ({ data }) => {
+  try {
+    tts ||= await KokoroTTS.from_pretrained('onnx-community/Kokoro-82M-v1.0-ONNX', {
+      dtype: 'q8', device: 'wasm',
+      progress_callback: p => { if (p.status === 'progress' && p.file.endsWith('.onnx')) self.postMessage({ type: 'progress', progress: p.progress }); },
+    });
+    if (data.type === 'load') return self.postMessage({ id: data.id, type: 'done' });
+    const out = await tts.generate(data.text, { voice: data.voice });
+    self.postMessage({ id: data.id, type: 'done', audio: out.audio, rate: out.sampling_rate }, [out.audio.buffer]);
+  } catch (e) {
+    self.postMessage({ id: data.id, type: 'error', message: String(e && e.message || e) });
+  }
+};`;
+let worker, reqId = 0, onModelProgress = null;
+const pending = new Map();
+function ttsWorker() {
+  if (worker) return worker;
+  worker = new Worker(URL.createObjectURL(new Blob([TTS_WORKER], { type: 'text/javascript' })), { type: 'module' });
+  worker.onmessage = ({ data }) => {
+    if (data.type === 'progress') return onModelProgress && onModelProgress(`Downloading the voice model: ${Math.round(data.progress)}%`, null);
+    const job = pending.get(data.id); if (!job) return;
+    pending.delete(data.id);
+    data.type === 'error' ? job.reject(new Error(data.message)) : job.resolve(data);
+  };
+  worker.onerror = e => {
+    pending.forEach(job => job.reject(new Error(e.message || 'The voice engine stopped')));
+    pending.clear(); worker.terminate(); worker = null;
+  };
+  return worker;
+}
+// Ask the worker for something: { type: 'load' } or { type: 'speak', text, voice }
+const ttsCall = (msg, report) => new Promise((resolve, reject) => {
+  const id = ++reqId;
+  pending.set(id, { resolve, reject });
+  if (report) onModelProgress = report;
+  ttsWorker().postMessage({ ...msg, id });
+});
+// Phone numbers and other long digit strings are read digit by digit, with a pause between groups:
+// "(555) 123-4567" becomes "five five five, one two three, four five six seven". Dates such as 2026-10-09 are left alone.
+const DIGITS = 'zero one two three four five six seven eight nine'.split(' ');
+const speakable = text => text.replace(/\+?\(?\d[\d ().-]*\d\)?/g, m => {
+  const digits = m.replace(/\D/g, '');
+  if (digits.length < 7 || /^\d{4}-\d{2}-\d{2}$/.test(m)) return m;
+  const groups = m.split(/\D+/).filter(Boolean).map(g => [...g].map(d => DIGITS[d]).join(' '));
+  return (m.startsWith('+') ? 'plus ' : '') + groups.join(', ');
+});
+// Pronunciation list: "Siobhan = shi vawn", one per line. The voice is given the respelling;
+// the video still shows the word as typed. Longer entries are applied first.
+function pronunciations() {
+  return $('#pronounce').value.split('\n')
+    .map(l => { const i = l.indexOf('='); return i < 0 ? null : [l.slice(0, i).trim(), l.slice(i + 1).trim().toLowerCase()]; })
+    .filter(r => r && r[0] && r[1])
+    .sort((a, b) => b[0].length - a[0].length);
+}
+const escapeRe = str => str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+const applyPronunciations = text => pronunciations().reduce((t, [word, say]) =>
+  t.replace(new RegExp(`(?<![\\p{L}\\p{N}])${escapeRe(word)}(?![\\p{L}\\p{N}])`, 'giu'), () => say), text);
+// What to say for a card: each line (bullets removed, names and numbers made speakable), split into sentences
+const spokenParts = card => card.split('\n').map(l => speakable(applyPronunciations(l.replace(/^•\s*/, '').trim()))).filter(Boolean)
+  .flatMap(l => l.match(/[^.!?]+[.!?]*["')\]]*/g).map(s => s.trim()).filter(Boolean));
+
+// Creates the voiceover if the cards, voice or pronunciations changed since last time.
+// report(message, fraction) shows progress; shouldStop() lets an export stop part way.
+async function ensureVoice(report, shouldStop = () => false) {
+  if (!needsVoice()) return;
+  const cards = cardTexts(), key = voiceKey(), voice = VOICES[state.gender];
+  report('Loading the voice model…', 0);
+  await ttsCall({ type: 'load' }, report);
+  // Voice each card in turn, sentence by sentence, then join into one continuous track
+  let rate = 24000;
+  const cardAudio = [];
+  for (let c = 0; c < cards.length; c++) {
+    report(`Creating the ${state.gender} voiceover: card ${c + 1} of ${cards.length}`, c / cards.length);
+    const parts = [];
+    for (const s of spokenParts(cards[c])) {
+      if (shouldStop()) throw new Error('stopped');
+      const out = await ttsCall({ type: 'speak', text: s, voice });
+      parts.push(out.audio); rate = out.rate;
+    }
+    cardAudio.push(parts);
+  }
+  const sentenceGap = Math.round(rate * 0.2), cardGap = Math.round(rate * 0.5);
+  const total = cardAudio.reduce((n, parts) => n + parts.reduce((m, p) => m + p.length + sentenceGap, 0) + cardGap, 0);
+  const buffer = getAudioCtx().createBuffer(1, total, rate), all = buffer.getChannelData(0), tl = [];
+  let pos = 0;
+  cardAudio.forEach((parts, c) => {
+    const start = pos;
+    parts.forEach(p => { all.set(p, pos); pos += p.length + sentenceGap; });
+    pos += cardGap;
+    tl.push({ text: cards[c], start: start / rate, end: pos / rate });
+  });
+  state.ttsVoice = { buffer, timeline: tl, key };
+  // Cards, voice or pronunciations changed while this was being made: make it again for what is there now
+  if (needsVoice()) return ensureVoice(report, shouldStop);
+  report('Voiceover ready', 1);
+}
+
+// Play sample: say just the listed words, so a pronunciation can be checked without a full preview
+let sampling = false;
+$('#hearBtn').addEventListener('click', async () => {
+  const words = pronunciations().map(r => r[0]);
+  if (!words.length) return status('Add a word to the pronunciation list first, such as: Siobhan = shi vawn', 'error');
+  if (sampling) return;
+  sampling = true; $('#hearBtn').disabled = true;
+  try {
+    await ttsCall({ type: 'load' }, msg => status(msg));
+    status('Creating a sample…');
+    const out = await ttsCall({ type: 'speak', text: applyPronunciations(words.join(', ')), voice: VOICES[state.gender] });
+    const ac = getAudioCtx(); ac.resume();
+    const buf = ac.createBuffer(1, out.audio.length, out.rate);
+    buf.getChannelData(0).set(out.audio);
+    const src = ac.createBufferSource(); src.buffer = buf; src.connect(ac.destination); src.start();
+    status(`Playing: ${words.join(', ')}`);
+    src.onended = () => { if ($('#status').textContent.startsWith('Playing:')) status(''); };
+  } catch (e) {
+    status('');
+    reportProblem('voice', e);
+  } finally { sampling = false; $('#hearBtn').disabled = false; }
+});
+
+/* ---------- Playback (preview and export share this) ---------- */
+// Plays the greeting: opening as a brand wave, then the voice with each card in turn.
+// dest: also route audio there for recording. onFrame: called after each frame is drawn.
+function play({ dest, onDone, onProgress, onFrame } = {}) {
+  const ac = getAudioCtx(); ac.resume();
+  const duration = totalDuration();
+  const voice = activeVoice();
+  const tl = voice?.timeline || timeline(cardTexts(), voiceDuration());
+  const aligns = cardItems().map(c => c.align);
+  let src = null;
+  if (voice) {
+    src = ac.createBufferSource(); src.buffer = voice.buffer;
+    src.connect(ac.destination);
+    if (dest) src.connect(dest);
+  }
+  const t0 = ac.currentTime + 0.1;
+  src && src.start(t0 + INTRO);
+  state.playing = true; stage.classList.add('playing');
+  let raf, done = false;
+  const tick = () => {
+    if (done) return; // a frame queued while the tab was in the background must not draw after the end
+    const t = Math.max(0, ac.currentTime - t0), vt = Math.max(0, t - INTRO);
+    const i = cardIndexAt(tl, vt), card = tl[i];
+    // Opening wave within 700ms: background, then logo with name and title, then the first card, 80ms apart.
+    // Later cards grow in from 96%; the card before leaves the same way, a little quicker.
+    const enter = i === 0 ? ease((t - 2 * WAVE) / PART) : ease((vt - card.start) / CARD_IN);
+    const leave = i === tl.length - 1 ? 1 : 1 - ease((vt - (card.end - CARD_OUT)) / CARD_OUT);
+    const msgIn = Math.min(enter, leave), partIn = ease((t - WAVE) / PART);
+    render(ctx, {
+      caption: card.text, align: aligns[i], progress: t / duration,
+      fx: { bgAlpha: ease(t / PART), partAlpha: partIn, partDy: -(1 - partIn) * 0.02,
+            msgAlpha: msgIn, msgScale: 0.96 + 0.04 * msgIn, msgDy: i === 0 ? (1 - enter) * 0.02 : 0 },
+    });
+    onFrame && onFrame();
+    onProgress && onProgress(clamp(t / duration), t, duration);
+    if (t >= duration) return finish();
+    cancelAnimationFrame(raf);
+    raf = requestAnimationFrame(tick);
+  };
+  // rAF pauses in background tabs; keep a timer fallback so exports finish
+  const backup = setInterval(() => document.hidden && tick(), 1000 / 30);
+  const finish = () => {
+    if (done) return; done = true;
+    cancelAnimationFrame(raf); clearInterval(backup);
+    try { src && src.stop(); } catch {}
+    state.playing = false; stage.classList.remove('playing');
+    onDone && onDone(); drawStage();
+  };
+  state.stopFn = finish;
+  tick();
+}
+
+const setPlayBtn = playing => { $('#playBtn').innerHTML = playing ? '<i data-lucide="square"></i><span>Stop</span>' : '<i data-lucide="play"></i><span>Preview</span>'; icons(); };
+let preparing = false;
+$('#playBtn').addEventListener('click', async () => {
+  if (state.playing) { state.stopFn(); return; }
+  if (preparing) return;
+  if (!cardTexts().length) return status('Write a message first.', 'error');
+  document.activeElement?.blur();
+  // Create the voiceover first if it is missing or out of date
+  if (needsVoice()) {
+    preparing = true;
+    $('#playBtn').disabled = $('#exportBtn').disabled = true;
+    $('#playBtn span').textContent = 'Preparing voiceover…';
+    try {
+      await ensureVoice(msg => status(msg));
+      status('');
+    } catch (e) {
+      status('');
+      reportProblem('voice', e);
+      return;
+    } finally {
+      preparing = false; clearStep();
+      $('#playBtn').disabled = $('#exportBtn').disabled = false;
+      setPlayBtn(false);
+    }
+  }
+  if (state.mode === 'upload' && !state.uploadBuffer) status('No recording added yet, so this preview has on-screen messages only.');
+  setPlayBtn(true);
+  play({ onDone: () => setPlayBtn(false) });
+});
+
+/* ---------- Export: two MP4s in one pass, then save ---------- */
+const mp4Type = () => window.MediaRecorder && MP4.find(t => MediaRecorder.isTypeSupported(t));
+const fmtTime = s => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
+let exportStep = null;
+function showStep(step) {
+  if (step && !exportStep) postToHost({ type: 'convo-greeting:scroll-top' });
+  exportStep = step;
+  $('#exportSheet').classList.toggle('hidden', !step);
+  document.querySelectorAll('[data-step]').forEach(s => s.classList.toggle('hidden', s.dataset.step !== step));
+  if (step) $('#exportSheet').setAttribute('aria-labelledby', `title-${step}`);
+}
+$('#closeReady').addEventListener('click', () => showStep(null));
+document.addEventListener('keydown', e => { if (e.key === 'Escape' && exportStep === 'ready') showStep(null); });
+
+const results = {};
+function download(key) {
+  const r = results[key]; if (!r) return;
+  const a = document.createElement('a');
+  a.href = r.url; a.download = r.name; document.body.appendChild(a); a.click(); a.remove();
+}
+document.querySelectorAll('[data-save]').forEach(b => b.addEventListener('click', () => download(b.dataset.save)));
+$('#saveBoth').addEventListener('click', () => { download('640'); setTimeout(() => download('352'), 400); });
+
+$('#exportBtn').addEventListener('click', async () => {
+  if (state.playing || preparing) return;
+  if (!cardTexts().length) return status('Write a message first.', 'error');
+  const mimeType = mp4Type();
+  if (!mimeType || !cv.captureStream) return status('This browser cannot export MP4 video. Use Chrome, Edge or Safari.', 'error');
+  document.activeElement?.blur();
+  let stopped = false;
+  $('#stopExport').onclick = () => { stopped = true; if (state.playing) state.stopFn(); };
+  const setMeter = (frac, left = '', right = '') => {
+    noteStep(left);
+    const p = Math.round(clamp(frac) * 100);
+    $('#meterFill').style.width = p + '%'; $('#meter').setAttribute('aria-valuenow', p);
+    $('#meterPct').textContent = left || p + '%'; $('#meterTime').textContent = right;
+  };
+  const endEarly = msg => { clearStep(); $('#exportBtn').disabled = $('#playBtn').disabled = false; showStep(null); status(msg, stopped ? '' : 'error'); };
+  $('#exportBtn').disabled = $('#playBtn').disabled = true;
+  showStep('exporting');
+  status('');
+
+  // Step 1: create the voiceover if needed
+  const twoSteps = needsVoice();
+  if (twoSteps) {
+    $('#meterStep').textContent = 'Step 1 of 2: Creating the voiceover'; noteStep('Export: creating the voiceover');
+    setMeter(0);
+    try {
+      await ensureVoice((msg, frac) => setMeter(frac ?? 0, msg), () => stopped);
+    } catch (e) {
+      if (stopped) return endEarly('Export stopped.');
+      reportProblem('voice', e);
+      return endEarly('');
+    }
+    if (stopped) return endEarly('Export stopped.');
+  }
+
+  // Step 2: play the greeting once, recording both sizes at the same time.
+  // 352 × 288 is the videophone size: the 4:3 frame is scaled into it, as videophones expect.
+  $('#meterStep').textContent = twoSteps ? 'Step 2 of 2: Recording both videos' : 'Recording both videos'; noteStep('Export: recording both videos');
+  setMeter(0);
+  const voice = activeVoice(), ac = getAudioCtx(), dest = ac.createMediaStreamDestination();
+  const audioTrack = voice ? dest.stream.getAudioTracks()[0] : null;
+  let outs;
+  try {
+  outs = EXPORTS.map((ex, n) => {
+    const canvas = document.createElement('canvas'); canvas.width = ex.w; canvas.height = ex.h;
+    const c2 = canvas.getContext('2d'); c2.imageSmoothingQuality = 'high';
+    const tracks = [...canvas.captureStream(30).getVideoTracks()];
+    if (audioTrack) tracks.push(n === 0 ? audioTrack : audioTrack.clone());
+    const rec = new MediaRecorder(new MediaStream(tracks), { mimeType, videoBitsPerSecond: ex.bits, audioBitsPerSecond: 96_000 });
+    const parts = [];
+    rec.ondataavailable = e => e.data.size && parts.push(e.data);
+    const finished = new Promise(res => rec.onstop = () => res(new Blob(parts, { type: rec.mimeType || 'video/mp4' })));
+    return { ex, c2, rec, finished };
+  });
+  outs.forEach(o => o.rec.start(250));
+  } catch (e) {
+    reportProblem('export', e);
+    return endEarly('');
+  }
+  play({
+    dest,
+    onFrame: () => outs.forEach(o => o.c2.drawImage(cv, 0, 0, o.ex.w, o.ex.h)),
+    onProgress: (p, t, d) => setMeter(p, '', `${fmtTime(t)} of ${fmtTime(d)}`),
+    onDone: () => setTimeout(() => outs.forEach(o => o.rec.state !== 'inactive' && o.rec.stop()), 200),
+  });
+  const blobs = await Promise.all(outs.map(o => o.finished));
+  $('#exportBtn').disabled = $('#playBtn').disabled = false;
+  if (stopped) return endEarly('Export stopped.');
+  if (blobs.some(b => !b.size)) { reportProblem('export', 'A video file came out empty'); return endEarly(''); }
+  clearStep();
+
+  outs.forEach((o, n) => {
+    const key = o.ex.key;
+    if (results[key]) URL.revokeObjectURL(results[key].url);
+    results[key] = { url: URL.createObjectURL(blobs[n]), name: fileName(o.ex) };
+    $(`#name${key}`).textContent = results[key].name;
+    $(`#size${key}`).textContent = `${o.ex.w} × ${o.ex.h}, ${(blobs[n].size / 1e6).toFixed(1)} MB`;
+  });
+  // Show a frame after the opening fade, not the first frame
+  const v = $('#readyVideo');
+  v.src = results['640'].url;
+  v.addEventListener('loadeddata', () => { v.currentTime = Math.min(1.2, v.duration || 1.2); }, { once: true });
+  showStep('ready');
+  $('#saveBoth').focus();
+});
+
+/* ---------- Embedded: report our height so the host page can size the iframe ---------- */
+function postToHost(msg) { if (window.self !== window.top) window.parent.postMessage(msg, '*'); }
+if (window.self !== window.top) {
+  let lastH = 0;
+  const report = () => {
+    const h = Math.ceil(document.body.scrollHeight);
+    if (h !== lastH) { lastH = h; postToHost({ type: 'convo-greeting:height', height: h }); }
+  };
+  new ResizeObserver(report).observe(document.body);
+  new MutationObserver(report).observe(document.body, { subtree: true, attributes: true, attributeFilter: ['class'] });
+  window.addEventListener('load', report);
+}
+
+selectCard(0);
+icons();
+// Redraw once the brand fonts are ready so text uses Inter
+(document.fonts ? document.fonts.ready : Promise.resolve()).then(refresh);
+</script>
+</body>
+</html>
