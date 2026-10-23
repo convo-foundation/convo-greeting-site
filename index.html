@@ -214,6 +214,17 @@
   .problem .sheet-actions { display: flex; flex-wrap: wrap; gap: 8px; justify-content: flex-end; margin-top: 8px; }
   .problem button.primary { background: var(--felt-primary, #00aa55); color: var(--felt-on-primary, #000); }
   .problem button { font: inherit; }
+  /* Two formats: parts that belong to only one are hidden in the other */
+  html.screen [data-only="videomail"], html:not(.screen) [data-only="screen"] { display: none !important; }
+  html.screen .stage .overlay { display: none; }
+  select.field { appearance: none; -webkit-appearance: none; cursor: pointer; padding-right: 36px;
+                 background-image: linear-gradient(45deg, transparent 50%, currentColor 50%), linear-gradient(135deg, currentColor 50%, transparent 50%);
+                 background-position: calc(100% - 20px) 50%, calc(100% - 15px) 50%; background-size: 5px 5px; background-repeat: no-repeat; }
+  .pair { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 8px; }
+  .pair span { color: var(--felt-text-muted); }
+  .row input[type=checkbox] { width: 20px; height: 20px; accent-color: var(--action-primary-bg); }
+  .row .range-wrap { display: flex; align-items: center; gap: 8px; }
+  .row .range-wrap input[type=range] { width: 110px; }
   .file-row strong { font-weight: var(--font-weight-medium); overflow-wrap: anywhere; display: block; }
 </style>
 </head>
@@ -268,7 +279,7 @@ if (window.self !== window.top) document.documentElement.classList.add('embed');
     </div>
 
     <div class="stage-bar">
-      <div class="group">
+      <div class="group" data-only="videomail">
         <div class="seg" role="radiogroup" aria-label="Message alignment for this card" id="alignSwitch">
           <button role="radio" aria-checked="false" data-align="left" aria-label="Align left" tabindex="-1"><i data-lucide="align-left"></i></button>
           <button role="radio" aria-checked="true" data-align="center" aria-label="Align centre"><i data-lucide="align-center"></i></button>
@@ -285,11 +296,51 @@ if (window.self !== window.top) document.documentElement.classList.add('embed');
 
   <aside class="inspector" aria-label="Settings">
     <div class="group">
+      <h2 class="group-label">What are you making?</h2>
+      <div class="seg" role="radiogroup" aria-label="What are you making?" id="formatSwitch">
+        <button role="radio" aria-checked="true" data-fmt="videomail"><i data-lucide="video"></i>Videomail greeting</button>
+        <button role="radio" aria-checked="false" data-fmt="screen" tabindex="-1"><i data-lucide="monitor"></i>Screen</button>
+      </div>
+      <p class="help" data-only="screen">Welcome, hold and closed screens for customer support. Exports one video at 1440 × 1080.</p>
+    </div>
+
+    <div class="group" data-only="screen">
+      <label class="group-label" for="screenTemplate">Template</label>
+      <select class="field" id="screenTemplate"></select>
+    </div>
+
+    <div class="group" data-only="screen">
+      <h2 class="group-label" id="sceneLabel">Scene 1</h2>
+      <input class="field" type="text" id="sceneHead" data-lpignore="true" data-1p-ignore data-bwignore data-form-type="other" placeholder="Headline" aria-label="Headline" autocomplete="off">
+      <textarea class="field" id="sceneMsg" data-lpignore="true" data-1p-ignore data-bwignore data-form-type="other" rows="3" placeholder="Message" aria-label="Message"></textarea>
+      <label class="row">Show business hours <input type="checkbox" id="sceneHours"></label>
+      <label class="row">Show waiting animation <input type="checkbox" id="sceneLoader"></label>
+    </div>
+
+    <div class="group" data-only="screen">
+      <h2 class="group-label">Business hours</h2>
+      <div class="pair"><select class="field" id="dayFrom" aria-label="First day open"></select><span>to</span><select class="field" id="dayTo" aria-label="Last day open"></select></div>
+      <div class="pair"><select class="field" id="timeOpen" aria-label="Opens at"></select><span>to</span><select class="field" id="timeClose" aria-label="Closes at"></select></div>
+      <select class="field" id="timeZone" aria-label="Time zone"></select>
+      <p class="help" id="hoursPreview"></p>
+    </div>
+
+    <div class="group" data-only="screen">
+      <h2 class="group-label">Logo</h2>
+      <div class="seg" role="radiogroup" aria-label="Logo" id="logoModeSwitch">
+        <button role="radio" aria-checked="true" data-logo="convo">Convo logo</button>
+        <button role="radio" aria-checked="false" data-logo="upload" tabindex="-1">Upload logo</button>
+      </div>
+      <button class="ghost compact mode-link hidden" id="screenLogoBtn"><i data-lucide="image-up"></i><span>Choose a logo</span></button>
+      <label class="row">Seconds per scene <span class="range-wrap"><input type="range" id="sceneSecs" min="4" max="12" step="2" value="6"><span class="value" id="sceneSecsVal">6 s</span></span></label>
+    </div>
+
+    <div class="group">
       <input class="field" type="text" id="phone" data-lpignore="true" data-1p-ignore data-bwignore data-form-type="other" inputmode="tel" placeholder="Insert Phone Number Here" aria-label="Phone number" autocomplete="off">
       <p class="help hidden" id="fileHint"></p>
     </div>
 
-    <div class="group">
+    <div class="group" data-only="videomail">
       <h2 class="group-label">Layout</h2>
       <div class="tiles" role="radiogroup" aria-label="Layout" id="layoutSwitch" style="--cols:2">
         <button role="radio" aria-checked="true" data-layout="profile">
@@ -304,6 +355,11 @@ if (window.self !== window.top) document.documentElement.classList.add('embed');
 
     <div class="group">
       <h2 class="group-label">Voiceover</h2>
+      <div class="seg" role="radiogroup" aria-label="Voiceover" id="voMode" data-only="screen">
+        <button role="radio" aria-checked="true" data-vo="none">None</button>
+        <button role="radio" aria-checked="false" data-vo="tts" tabindex="-1">Created voice</button>
+        <button role="radio" aria-checked="false" data-vo="upload" tabindex="-1">Recording</button>
+      </div>
       <div data-pane="tts" style="display:grid;gap:12px">
         <div class="seg" role="radiogroup" aria-label="Voice" id="voiceSwitch">
           <button role="radio" aria-checked="false" data-voice="male" tabindex="-1">Male</button>
@@ -317,11 +373,11 @@ if (window.self !== window.top) document.documentElement.classList.add('embed');
           </div>
           <textarea class="field" id="pronounce" data-lpignore="true" data-1p-ignore data-bwignore data-form-type="other" rows="3" spellcheck="false" placeholder="Siobhan = shi vawn&#10;Nguyen = win"></textarea>
         </div>
-        <button class="ghost compact mode-link" id="useRecording"><i data-lucide="mic"></i><span>Use your own recording instead</span></button>
+        <button class="ghost compact mode-link" id="useRecording" data-only="videomail"><i data-lucide="mic"></i><span>Use your own recording instead</span></button>
       </div>
       <div data-pane="upload" class="hidden" style="display:grid;gap:12px">
         <div class="drop" id="audioDrop" tabindex="0" role="button" aria-label="Add your recording">
-          <i data-lucide="file-audio"></i><strong>Add your recording</strong><span class="help">MP3, WAV, M4A or MP4. The words become your cards.</span>
+          <i data-lucide="file-audio"></i><strong>Add your recording</strong><span class="help" id="dropHelp">MP3, WAV, M4A or MP4. The words become your cards.</span>
           <input type="file" accept="audio/*,video/mp4,video/quicktime,.m4a,.mov" hidden>
         </div>
         <div class="rec-file hidden" id="recFile">
@@ -330,11 +386,11 @@ if (window.self !== window.top) document.documentElement.classList.add('embed');
           <button class="ghost compact" id="recReplace"><i data-lucide="refresh-cw"></i><span>Use a different recording</span></button>
         </div>
         <p class="help" id="recStatus" role="status" aria-live="polite"></p>
-        <button class="ghost compact mode-link" id="useVoice"><i data-lucide="audio-lines"></i><span>Use a created voice instead</span></button>
+        <button class="ghost compact mode-link" id="useVoice" data-only="videomail"><i data-lucide="audio-lines"></i><span>Use a created voice instead</span></button>
       </div>
     </div>
 
-    <div class="group">
+    <div class="group" data-only="videomail">
       <h2 class="group-label">Message style</h2>
       <div class="tiles" role="radiogroup" aria-label="Message style" id="styleSwitch">
         <button role="radio" aria-checked="false" data-style="plain" tabindex="-1"><span class="swatch" style="background:var(--color-base-black)"><span style="color:var(--color-base-white)">Aa</span></span>Plain</button>
@@ -346,7 +402,7 @@ if (window.self !== window.top) document.documentElement.classList.add('embed');
     </div>
   </aside>
 </main>
-<p class="app-version">Version v14 · Oct 21, 2026 1:12 PM</p>
+<p class="app-version">Version v15 · Oct 23, 2026 10:28 AM</p>
 <script>{ const v = document.querySelector('.app-version'); if (v.textContent.includes('__')) v.textContent = 'Local preview (not published)'; }</script>
 
 <div class="scrim problem hidden" id="problemSheet" role="alertdialog" aria-modal="true" aria-labelledby="problemTitle" aria-describedby="problemText">
@@ -368,17 +424,16 @@ if (window.self !== window.top) document.documentElement.classList.add('embed');
       <p class="meter-step" id="meterStep"></p>
       <div class="meter" role="progressbar" aria-label="Export progress" aria-valuemin="0" aria-valuemax="100" id="meter"><div id="meterFill"></div></div>
       <div class="meter-row"><span id="meterPct">0%</span><span id="meterTime"></span></div>
-      <p class="help">The greeting plays through once to record both sizes, so keep this tab open.</p>
+      <p class="help">It plays through once while it is recorded, so keep this tab open.</p>
       <div class="sheet-actions"><button class="ghost" id="stopExport">Stop exporting</button></div>
     </section>
     <section data-step="ready" class="hidden">
       <h2 id="title-ready">Your greeting is ready</h2>
       <video class="ready-video" id="readyVideo" controls></video>
-      <div class="file-row"><span><strong id="name640"></strong><span class="help" id="size640"></span></span><button class="secondary compact" data-save="640">Save</button></div>
-      <div class="file-row"><span><strong id="name352"></strong><span class="help" id="size352"></span></span><button class="secondary compact" data-save="352">Save</button></div>
+      <div id="fileRows" style="display:grid;gap:8px"></div>
       <div class="sheet-actions">
         <button class="ghost" id="closeReady">Close</button>
-        <button class="primary" id="saveBoth"><i data-lucide="download"></i>Save both videos</button>
+        <button class="primary" id="saveBoth"><i data-lucide="download"></i><span>Save both videos</span></button>
       </div>
     </section>
   </div>
@@ -476,6 +531,29 @@ const FONT = 'Inter, system-ui, -apple-system, Helvetica, Arial, sans-serif';
 const EXPORTS = [ { key: '640', w: 640, h: 480, bits: 2_000_000 }, { key: '352', w: 352, h: 288, bits: 800_000 } ];
 const MP4 = ['video/mp4;codecs=avc1.42E01E,mp4a.40.2', 'video/mp4;codecs=avc1.42E01E', 'video/mp4'];
 const WAIT_LINE = 'Stay on to leave a videomail';
+// Screens: welcome, hold and closed screens for customer support
+const SCREEN_EXPORTS = [ { key: '1440', w: 1440, h: 1080, bits: 6_000_000 } ];
+const SUPPORT_PHONE = '5106295622'; // Convo US support videophone, from convo.io/us/support
+// Starting points. Each scene: headline, message, and whether it shows the hours and the waiting animation.
+// Kept as plain data so the list can later come from a shared source instead of the code.
+const TEMPLATES = [
+  { id: 'welcome', name: 'Welcome / hold', scenes: [
+    { head: 'Thank you for calling', msg: 'Please wait for the next available member of our support team.', hours: false, loader: true },
+    { head: 'Please wait', msg: 'Thank you for your patience.\nSomeone from our team will be with you soon.', hours: true, loader: true } ] },
+  { id: 'busy', name: 'All lines busy', scenes: [
+    { head: 'Our team is busy right now', msg: 'Please stay on. We will be with you as soon as we can.', hours: false, loader: true } ] },
+  { id: 'closed', name: 'Closed', scenes: [
+    { head: 'Thank you for calling', msg: 'We are closed right now.\nPlease call back during our open hours.', hours: true, loader: false } ] },
+  { id: 'holiday', name: 'Holiday', scenes: [
+    { head: 'We are closed for the holiday', msg: 'We will be back on our next business day.\nThank you for your patience.', hours: true, loader: false } ] },
+  { id: 'blank', name: 'Blank', scenes: [ { head: '', msg: '', hours: false, loader: false } ] },
+];
+const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+const TIMES = Array.from({ length: 48 }, (_, i) => {
+  const h = Math.floor(i / 2), m = i % 2 ? ':30' : '', h12 = h % 12 || 12;
+  return `${h12}${m} ${h < 12 ? 'am' : 'pm'}`;
+});
+const ZONES = ['ET', 'CT', 'MT', 'PT', 'AKT', 'HT'];
 
 const state = {
   bg: null, logo: null, layout: 'profile',
@@ -488,14 +566,31 @@ const state = {
   uploadBuffer: null, // an uploaded recording, decoded
   uploadTimes: null,  // [{ start, end }] per card, from the words in the recording
   playing: false, stopFn: null,
+  format: 'videomail', // or 'screen'
+  // Screens reuse cards as scenes: cards hold the messages, these hold the rest of each scene
+  heads: [], sceneHours: [], sceneLoader: [],
+  hours: { from: 'Monday', to: 'Friday', open: '8 am', close: '6 pm', tz: 'CT' },
+  logoMode: 'convo', screenLogo: null, sceneSecs: 6,
+  saved: {},           // each format's cards, kept while the other is shown
+  frameOpts: null,     // the last frame drawn, so an export can draw it again at its own size
 };
+const isScreen = () => state.format === 'screen';
+const hoursText = () => { const h = state.hours; return `${h.from === h.to ? h.from : h.from + ' - ' + h.to}: ${h.open} - ${h.close} ${h.tz}`; };
+// The official wordmark, from the brand CDN (it allows canvas use, so exports stay possible)
+const convoWordmark = new Image();
+convoWordmark.crossOrigin = 'anonymous';
+convoWordmark.onload = () => typeof refresh === 'function' && refresh();
+convoWordmark.src = 'https://brand.convo.io/cdn/v1/assets/logo/wordmark/Convo_Wordmark_Evergreen.svg';
 let audioCtx;
 const getAudioCtx = () => (audioCtx ||= new (window.AudioContext || window.webkitAudioContext)());
 const status = (msg, tone) => { if (tone !== 'error') noteStep(msg); $('#status').textContent = msg || ''; $('#status').dataset.tone = tone || ''; };
 // Tidy a card: collapse spaces, keep line breaks and single blank lines between paragraphs
 const normCard = text => text.replace(/\r/g, '').split('\n').map(l => l.replace(/[ \t ]+/g, ' ').trim())
   .join('\n').replace(/\n{3,}/g, '\n\n').trim();
-const cardTexts = () => state.cards.map(normCard).filter(Boolean);
+// The text of each card; for a screen, each scene's headline and message
+const sceneText = i => [state.heads[i] || '', state.cards[i] || ''].map(normCard).filter(Boolean).join('\n');
+const sceneIndexes = () => state.cards.map((_, i) => i).filter(i => sceneText(i));
+const cardTexts = () => isScreen() ? sceneIndexes().map(sceneText) : state.cards.map(normCard).filter(Boolean);
 const cardItems = () => state.cards.map((t, i) => ({ text: normCard(t), align: state.aligns[i] || 'center' })).filter(c => c.text);
 
 // White wordmark in dark mode (app chrome)
@@ -517,7 +612,7 @@ const videoIcon = (() => {
 
 /* ---------- Phone number and file names ---------- */
 const phoneDigits = () => $('#phone').value.replace(/\D/g, '');
-const fileName = ex => `${phoneDigits() || 'fullphonenumber'}_${ex.w}x${ex.h}.mp4`;
+const fileName = ex => `${phoneDigits() || (isScreen() ? SUPPORT_PHONE : 'fullphonenumber')}_${ex.w}x${ex.h}.mp4`;
 function syncFileHint() {
   const d = phoneDigits(), hint = $('#fileHint');
   const short = d && d.length < 10;
@@ -643,7 +738,9 @@ function roundRect(c, x, y, w, h, r) {
 }
 
 // opts: caption, align, progress (0..1), editing (skip text the stage edits in place), fx (animation)
-function render(c, { caption = '', align = 'center', progress = 0, editing = false, fx = {} } = {}) {
+function render(c, opts = {}) {
+  if (isScreen()) return renderScreen(c, opts);
+  const { caption = '', align = 'center', progress = 0, editing = false, fx = {} } = opts;
   const { bgAlpha = 1, partAlpha = 1, partDy = 0, msgAlpha = 1, msgScale = 1, msgDy = 0 } = fx;
   const w = c.canvas.width, h = c.canvas.height, g = geometry(w, h), k = g.k;
   const black = token('--color-base-black'), white = token('--color-base-white');
@@ -716,6 +813,95 @@ function render(c, { caption = '', align = 'center', progress = 0, editing = fal
   c.restore();
 }
 
+/* ---------- Screens: centred headline, message, hours and logo, 4:3 ---------- */
+// The brand's progress indicator is filleted dots, never a spinner (Motion: nothing snaps or spins).
+// Three dots; the Evergreen one stretches toward the next, joins it and settles there, then travels back.
+// One trip is 0.5s on the brand's "move" curve; the cycle is 2s, so even scene lengths loop seamlessly.
+const easeMove = cubicBezier(0.77, 0, 0.175, 1);
+const LOADER_PATH = [0, 1, 2, 1, 0], LOADER_STEP = 0.5;
+function drawLoader(c, cx, cy, k, t) {
+  const gap = 64 * k, r = 16 * k, rQuiet = 10 * k, xs = [-1, 0, 1].map(n => cx + n * gap);
+  c.fillStyle = token('--color-neutral-700') || '#3b3f3d';
+  xs.forEach(x => { c.beginPath(); c.arc(x, cy, rQuiet, 0, Math.PI * 2); c.fill(); });
+  const steps = LOADER_PATH.length - 1, cycle = steps * LOADER_STEP, phase = ((t % cycle) + cycle) % cycle;
+  const s = Math.min(steps - 1, Math.floor(phase / LOADER_STEP)), u = (phase - s * LOADER_STEP) / LOADER_STEP;
+  const from = xs[LOADER_PATH[s]], to = xs[LOADER_PATH[s + 1]];
+  const lead = from + (to - from) * easeMove(u / 0.75), trail = from + (to - from) * easeMove((u - 0.25) / 0.75);
+  const x0 = Math.min(lead, trail), x1 = Math.max(lead, trail);
+  c.fillStyle = token('--color-signal-evergreen');
+  roundRect(c, x0 - r, cy - r, x1 - x0 + 2 * r, 2 * r, r); c.fill();
+}
+// Wrap into as few lines as fit, then make those lines as even as possible (no single word left on its own)
+function balancedWrap(c, text, maxW) {
+  const lines = wrap(c, text, maxW);
+  if (lines.length < 2) return lines;
+  let lo = 0, hi = maxW;
+  for (let n = 0; n < 16; n++) { const mid = (lo + hi) / 2; if (wrap(c, text, mid).length > lines.length) lo = mid; else hi = mid; }
+  return wrap(c, text, hi);
+}
+// Lucide "clock", as drawn: a 2px line on a 24px grid
+const clockIcon = new Path2D('M12 2a10 10 0 1 0 0 20a10 10 0 1 0 0-20Z M12 6v6l4 2');
+function renderScreen(c, { scene = state.active, t = 0, fx = {} } = {}) {
+  const { msgAlpha = 1, msgScale = 1 } = fx;
+  const w = c.canvas.width, h = c.canvas.height, k = w / W;
+  // GT Walsheim throughout, as in Convo's own screens; the brand stylesheet supplies its fallbacks
+  const display = token('--font-family-display') || FONT, body = display;
+  const green = token('--color-signal-evergreen'), white = token('--color-base-white');
+  c.fillStyle = token('--color-base-black'); c.fillRect(0, 0, w, h);
+
+  // Logo at the bottom: the Convo wordmark, or an uploaded logo
+  const logo = state.logoMode === 'convo' ? (convoWordmark.complete && convoWordmark.naturalWidth ? convoWordmark : null) : state.screenLogo;
+  if (logo) {
+    const bw = state.logoMode === 'convo' ? w * 0.2 : w * 0.3, bh = state.logoMode === 'convo' ? h * 0.075 : h * 0.12;
+    const sc = Math.min(bw / (logo.naturalWidth || logo.width), bh / (logo.naturalHeight || logo.height));
+    const lw = (logo.naturalWidth || logo.width) * sc, lh = (logo.naturalHeight || logo.height) * sc;
+    c.drawImage(logo, (w - lw) / 2, h * 0.87 - lh / 2, lw, lh);
+  }
+
+  // The waiting animation keeps one place, so it carries on smoothly from scene to scene
+  const loader = !!state.sceneLoader[scene];
+  if (loader) drawLoader(c, w / 2, h * 0.16, k, t);
+
+  // Headline, message, then the hours under a short divider: one block, centred in the space left
+  const head = normCard(state.heads[scene] || ''), msg = normCard(state.cards[scene] || ''), hours = !!state.sceneHours[scene];
+  const top = loader ? h * 0.25 : h * 0.08, bottom = h * 0.77, maxW = w * 0.84;
+  let hfs = 76 * k, mfs = 46 * k, headLines, msgLines;
+  const measure = () => {
+    c.font = `500 ${hfs}px ${display}`;
+    headLines = head ? head.split('\n').flatMap(p => balancedWrap(c, p, maxW)) : [];
+    c.font = `400 ${mfs}px ${body}`;
+    msgLines = msg ? msg.split('\n').flatMap(p => p.trim() ? balancedWrap(c, p, maxW) : ['']) : [];
+    return headLines.length * hfs * 1.15 + (head && msg ? 30 * k : 0) + msgLines.length * mfs * 1.4 + (hours ? 150 * k : 0);
+  };
+  let blockH = measure();
+  while (blockH > bottom - top && mfs > MIN_FS * k) { hfs *= 0.94; mfs *= 0.94; blockH = measure(); }
+  let y = top + Math.max(0, (bottom - top - blockH) / 2);
+  c.save();
+  c.globalAlpha = msgAlpha;
+  const cy = top + (bottom - top) / 2;
+  c.translate(w / 2, cy); c.scale(msgScale, msgScale); c.translate(-w / 2, -cy);
+  c.textAlign = 'center'; c.textBaseline = 'middle';
+  c.fillStyle = green; c.font = `500 ${hfs}px ${display}`;
+  for (const l of headLines) { c.fillText(l, w / 2, y + hfs * 0.575); y += hfs * 1.15; }
+  if (head && msg) y += 30 * k;
+  c.fillStyle = white; c.font = `400 ${mfs}px ${body}`;
+  for (const l of msgLines) { c.fillText(l, w / 2, y + mfs * 0.7); y += mfs * 1.4; }
+  if (hours) {
+    y += 44 * k;
+    c.fillStyle = green; roundRect(c, w / 2 - 40 * k, y - 2.5 * k, 80 * k, 5 * k, 2.5 * k); c.fill();
+    y += 66 * k;
+    const text = hoursText(), icon = 46 * k, gap = 18 * k;
+    c.font = `400 ${40 * k}px ${body}`;
+    const tw = c.measureText(text).width, x0 = (w - (icon + gap + tw)) / 2;
+    c.save(); c.translate(x0, y - icon / 2); c.scale(icon / 24, icon / 24);
+    c.strokeStyle = green; c.lineWidth = 2; c.lineCap = 'round'; c.lineJoin = 'round'; c.stroke(clockIcon);
+    c.restore();
+    c.fillStyle = white; c.textAlign = 'left';
+    c.fillText(text, x0 + icon + gap, y);
+  }
+  c.restore();
+}
+
 /* ---------- Stage: canvas below, editable text on top ---------- */
 const stage = $('#stage'), msgEdit = $('#msgEdit'), nameEdit = $('#nameEdit'), titleEdit = $('#titleEdit');
 const LONG_CARD = 'This card is long. Shorten it, or move some of it to a new card, so it stays easy to read.';
@@ -723,6 +909,7 @@ const pct = (v, of) => (v / of * 100) + '%';
 
 function drawStage() {
   if (state.playing) return;
+  if (isScreen()) { render(ctx, { scene: state.active }); return; }
   render(ctx, { editing: true });
   const g = geometry(W, H);
   // Message: sized and styled exactly like the canvas draws it
@@ -779,38 +966,42 @@ function renderStrip() {
   state.cards.forEach((_, i) => {
     const wrapEl = document.createElement('div');
     wrapEl.className = 'thumb-wrap';
-    wrapEl.innerHTML = `<button class="thumb" aria-pressed="${i === state.active}" aria-label="Card ${i + 1}">
-        <canvas width="256" height="192"></canvas><span>Card ${i + 1}</span></button>
-      ${state.cards.length > 1 ? `<button class="icon thumb-del" aria-label="Remove card ${i + 1}"><i data-lucide="x"></i></button>` : ''}`;
+    wrapEl.innerHTML = `<button class="thumb" aria-pressed="${i === state.active}" aria-label="${unitName()} ${i + 1}">
+        <canvas width="256" height="192"></canvas><span>${unitName()} ${i + 1}</span></button>
+      ${state.cards.length > 1 ? `<button class="icon thumb-del" aria-label="Remove ${unitName().toLowerCase()} ${i + 1}"><i data-lucide="x"></i></button>` : ''}`;
     wrapEl.querySelector('.thumb').addEventListener('click', () => selectCard(i));
     wrapEl.querySelector('.thumb-del')?.addEventListener('click', () => {
       stopPreview();
       state.cards.splice(i, 1); state.aligns.splice(i, 1);
+      [state.heads, state.sceneHours, state.sceneLoader].forEach(a => a.splice(i, 1));
       selectCard(Math.min(state.active > i ? state.active - 1 : state.active, state.cards.length - 1));
     });
     strip.appendChild(wrapEl);
   });
   const add = document.createElement('button');
   add.className = 'add-tile';
-  add.innerHTML = '<i data-lucide="plus"></i><span>Add card</span>';
+  add.innerHTML = `<i data-lucide="plus"></i><span>Add ${unitName().toLowerCase()}</span>`;
   add.disabled = state.cards.length >= MAX_CARDS;
   add.addEventListener('click', () => {
     stopPreview();
     state.cards.push(''); state.aligns.push(state.aligns[state.active] || 'center');
+    state.heads.push(''); state.sceneHours.push(!!state.sceneHours[state.active]); state.sceneLoader.push(!!state.sceneLoader[state.active]);
     selectCard(state.cards.length - 1);
-    msgEdit.focus();
+    (isScreen() ? $('#sceneHead') : msgEdit).focus();
   });
   strip.appendChild(add);
   icons(); drawThumbs();
 }
 function drawThumb(i) {
   const c = $('#strip').children[i]?.querySelector('canvas');
-  if (c) render(c.getContext('2d'), { caption: normCard(state.cards[i]), align: state.aligns[i] });
+  if (c) render(c.getContext('2d'), isScreen() ? { scene: i } : { caption: normCard(state.cards[i]), align: state.aligns[i] });
 }
 const drawThumbs = () => state.cards.forEach((_, i) => drawThumb(i));
+const unitName = () => isScreen() ? 'Scene' : 'Card';
 function selectCard(i) {
   state.active = i;
   msgEdit.value = state.cards[i];
+  if (isScreen()) syncSceneFields();
   renderStrip(); drawStage();
 }
 
@@ -822,7 +1013,7 @@ function loadImage(file, key) {
   img.src = URL.createObjectURL(file);
 }
 $('#logoSlot').addEventListener('click', () => $('#logoInput').click());
-$('#logoInput').addEventListener('change', e => { loadImage(e.target.files[0], 'logo'); e.target.value = ''; });
+$('#logoInput').addEventListener('change', e => { loadImage(e.target.files[0], isScreen() ? 'screenLogo' : 'logo'); e.target.value = ''; });
 $('#logoRemove').addEventListener('click', () => { state.logo = null; refresh(); });
 
 stage.addEventListener('dragover', e => {
@@ -836,7 +1027,9 @@ stage.addEventListener('drop', e => {
   e.preventDefault();
   stage.classList.remove('over-bg'); $('#logoSlot').classList.remove('over');
   const file = e.dataTransfer.files[0];
-  if (file?.type.startsWith('image/')) loadImage(file, 'logo');
+  if (file?.type.startsWith('image/')) {
+    if (isScreen()) { setLogoMode('upload'); loadImage(file, 'screenLogo'); } else loadImage(file, 'logo');
+  }
 });
 // Stop the browser from opening files dropped elsewhere
 ['dragover', 'drop'].forEach(ev => window.addEventListener(ev, e => e.preventDefault()));
@@ -955,6 +1148,10 @@ function cardsFromChunks(chunks, duration) {
     }
   }
 }
+// Show a choice in a segmented control without acting on it
+function setSeg(el, key, value) {
+  el.querySelectorAll('[role=radio]').forEach(b => { const on = b.dataset[key] === value; b.setAttribute('aria-checked', on); b.tabIndex = on ? 0 : -1; });
+}
 const recStatus = (msg, tone = '') => { if (tone !== 'error') noteStep(msg); $('#recStatus').textContent = msg; $('#recStatus').dataset.tone = tone; };
 let reading = false;
 async function setRecording(file) {
@@ -975,6 +1172,7 @@ async function setRecording(file) {
     $('#recName').textContent = file.name;
     $('#voicePreview').src = URL.createObjectURL(file);
     $('#recFile').classList.remove('hidden');
+    if (isScreen()) { recStatus('Recording added. The scenes share its length.'); return; }
     noteStep('Reading the words in your recording');
     const chunks = await transcribe(await toMono16k(buffer), msg => recStatus(msg));
     const cards = cardsFromChunks(chunks, buffer.duration);
@@ -1006,7 +1204,9 @@ function clearRecording() {
 function setMode(mode) {
   if (reading) return;
   stopPreview();
+  if (mode === 'none' && !isScreen()) mode = 'tts';
   state.mode = mode;
+  setSeg($('#voMode'), 'vo', mode);
   document.querySelectorAll('[data-pane]').forEach(p => p.classList.toggle('hidden', p.dataset.pane !== mode));
   if (mode === 'tts') recStatus('');
 }
@@ -1042,12 +1242,15 @@ function timeline(cards, duration) {
 const estimateDuration = cards => Math.max(3, cards.join(' ').split(/\s+/).length / 2.5 + 0.5);
 // The voice in use: the uploaded file, or the created voice if it still matches the cards, voice and pronunciations
 const voiceKey = () => JSON.stringify([state.gender, cardTexts(), pronunciations()]);
-const activeVoice = () => state.mode === 'upload'
+const activeVoice = () => state.mode === 'none' ? null : state.mode === 'upload'
   ? (state.uploadBuffer && { buffer: state.uploadBuffer, timeline: uploadTimeline() })
   : (state.ttsVoice?.key === voiceKey() ? state.ttsVoice : null);
 const needsVoice = () => state.mode === 'tts' && !activeVoice();
-const voiceDuration = () => activeVoice()?.buffer.duration ?? estimateDuration(cardTexts());
-const totalDuration = () => INTRO + voiceDuration() + TAIL;
+const voiceDuration = () => activeVoice()?.buffer.duration
+  ?? (isScreen() ? Math.max(1, sceneIndexes().length) * state.sceneSecs : estimateDuration(cardTexts()));
+// Screens start and end on the full design (no opening from black), so they can loop
+const introSecs = () => isScreen() ? 0 : INTRO, tailSecs = () => isScreen() ? 0 : TAIL;
+const totalDuration = () => introSecs() + voiceDuration() + tailSecs();
 const cardIndexAt = (tl, t) => { const i = tl.findIndex(c => t >= c.start && t < c.end); return i < 0 ? tl.length - 1 : i; };
 
 /* ---------- Text to voice (Kokoro, runs in the browser, regular pace) ---------- */
@@ -1129,7 +1332,7 @@ async function ensureVoice(report, shouldStop = () => false) {
   let rate = 24000;
   const cardAudio = [];
   for (let c = 0; c < cards.length; c++) {
-    report(`Creating the ${state.gender} voiceover: card ${c + 1} of ${cards.length}`, c / cards.length);
+    report(`Creating the ${state.gender} voiceover: ${unitName().toLowerCase()} ${c + 1} of ${cards.length}`, c / cards.length);
     const parts = [];
     for (const s of spokenParts(cards[c])) {
       if (shouldStop()) throw new Error('stopped');
@@ -1184,40 +1387,64 @@ function play({ dest, onDone, onProgress, onFrame } = {}) {
   const ac = getAudioCtx(); ac.resume();
   const duration = totalDuration();
   const voice = activeVoice();
-  const tl = voice?.timeline || timeline(cardTexts(), voiceDuration());
-  const aligns = cardItems().map(c => c.align);
+  const tl = voice?.timeline || (isScreen() && !voice
+    ? sceneIndexes().map((_, n) => ({ text: '', start: n * state.sceneSecs, end: (n + 1) * state.sceneSecs }))
+    : timeline(cardTexts(), voiceDuration()));
+  const aligns = cardItems().map(c => c.align), scenes = sceneIndexes(), intro = introSecs();
   let src = null;
   if (voice) {
     src = ac.createBufferSource(); src.buffer = voice.buffer;
     src.connect(ac.destination);
     if (dest) src.connect(dest);
   }
-  const t0 = ac.currentTime + 0.1;
-  src && src.start(t0 + INTRO);
+  // With a voice, time follows the audio so the cards stay in step with it. Without one (a silent screen),
+  // the page clock is used, so playback never waits on the browser starting its audio.
+  const now = voice ? () => ac.currentTime : () => performance.now() / 1000;
+  const t0 = now() + 0.1;
+  src && src.start(t0 + intro);
   state.playing = true; stage.classList.add('playing');
-  let raf, done = false;
+  let raf, done = false, lastTick = 0;
   const tick = () => {
     if (done) return; // a frame queued while the tab was in the background must not draw after the end
-    const t = Math.max(0, ac.currentTime - t0), vt = Math.max(0, t - INTRO);
+    lastTick = performance.now();
+    const t = Math.max(0, now() - t0), vt = Math.max(0, t - intro);
     const i = cardIndexAt(tl, vt), card = tl[i];
+    if (isScreen()) {
+      // One scene stays put. Several: each grows in and leaves; the first and last fade from and to the
+      // same plain frame, so the screen loops without a jump. The waiting animation never stops.
+      const many = tl.length > 1;
+      const enter = many ? ease((vt - card.start) / CARD_IN) : 1;
+      const leave = many ? 1 - ease((vt - (card.end - CARD_OUT)) / CARD_OUT) : 1;
+      const msgIn = Math.min(enter, leave);
+      state.frameOpts = { scene: scenes[i], t, fx: { msgAlpha: msgIn, msgScale: 0.96 + 0.04 * msgIn } };
+      render(ctx, state.frameOpts);
+      onFrame && onFrame();
+      onProgress && onProgress(clamp(t / duration), t, duration);
+      if (t >= duration) return finish();
+      cancelAnimationFrame(raf);
+      raf = requestAnimationFrame(tick);
+      return;
+    }
     // Opening wave within 700ms: background, then logo with name and title, then the first card, 80ms apart.
     // Later cards grow in from 96%; the card before leaves the same way, a little quicker.
     const enter = i === 0 ? ease((t - 2 * WAVE) / PART) : ease((vt - card.start) / CARD_IN);
     const leave = i === tl.length - 1 ? 1 : 1 - ease((vt - (card.end - CARD_OUT)) / CARD_OUT);
     const msgIn = Math.min(enter, leave), partIn = ease((t - WAVE) / PART);
-    render(ctx, {
+    state.frameOpts = {
       caption: card.text, align: aligns[i], progress: t / duration,
       fx: { bgAlpha: ease(t / PART), partAlpha: partIn, partDy: -(1 - partIn) * 0.02,
             msgAlpha: msgIn, msgScale: 0.96 + 0.04 * msgIn, msgDy: i === 0 ? (1 - enter) * 0.02 : 0 },
-    });
+    };
+    render(ctx, state.frameOpts);
     onFrame && onFrame();
     onProgress && onProgress(clamp(t / duration), t, duration);
     if (t >= duration) return finish();
     cancelAnimationFrame(raf);
     raf = requestAnimationFrame(tick);
   };
-  // rAF pauses in background tabs; keep a timer fallback so exports finish
-  const backup = setInterval(() => document.hidden && tick(), 1000 / 30);
+  // Browsers pause animation frames in background tabs and in iframes scrolled out of view.
+  // When frames stop arriving, a timer keeps drawing, so previews and exports always finish.
+  const backup = setInterval(() => performance.now() - lastTick > 100 && tick(), 1000 / 30);
   const finish = () => {
     if (done) return; done = true;
     cancelAnimationFrame(raf); clearInterval(backup);
@@ -1279,8 +1506,7 @@ function download(key) {
   const a = document.createElement('a');
   a.href = r.url; a.download = r.name; document.body.appendChild(a); a.click(); a.remove();
 }
-document.querySelectorAll('[data-save]').forEach(b => b.addEventListener('click', () => download(b.dataset.save)));
-$('#saveBoth').addEventListener('click', () => { download('640'); setTimeout(() => download('352'), 400); });
+$('#saveBoth').addEventListener('click', () => Object.keys(results).forEach((k, n) => setTimeout(() => download(k), n * 400)));
 
 $('#exportBtn').addEventListener('click', async () => {
   if (state.playing || preparing) return;
@@ -1318,13 +1544,14 @@ $('#exportBtn').addEventListener('click', async () => {
 
   // Step 2: play the greeting once, recording both sizes at the same time.
   // 352 × 288 is the videophone size: the 4:3 frame is scaled into it, as videophones expect.
-  $('#meterStep').textContent = twoSteps ? 'Step 2 of 2: Recording both videos' : 'Recording both videos'; noteStep('Export: recording both videos');
+  const exportsNow = isScreen() ? SCREEN_EXPORTS : EXPORTS, what = exportsNow.length > 1 ? 'Recording both videos' : 'Recording the video';
+  $('#meterStep').textContent = twoSteps ? `Step 2 of 2: ${what}` : what; noteStep('Export: ' + what.toLowerCase());
   setMeter(0);
   const voice = activeVoice(), ac = getAudioCtx(), dest = ac.createMediaStreamDestination();
   const audioTrack = voice ? dest.stream.getAudioTracks()[0] : null;
   let outs;
   try {
-  outs = EXPORTS.map((ex, n) => {
+  outs = exportsNow.map((ex, n) => {
     const canvas = document.createElement('canvas'); canvas.width = ex.w; canvas.height = ex.h;
     const c2 = canvas.getContext('2d'); c2.imageSmoothingQuality = 'high';
     const tracks = [...canvas.captureStream(30).getVideoTracks()];
@@ -1342,7 +1569,8 @@ $('#exportBtn').addEventListener('click', async () => {
   }
   play({
     dest,
-    onFrame: () => outs.forEach(o => o.c2.drawImage(cv, 0, 0, o.ex.w, o.ex.h)),
+    // Screens draw each frame again at full size; videomail scales the stage down
+    onFrame: () => outs.forEach(o => isScreen() ? render(o.c2, state.frameOpts) : o.c2.drawImage(cv, 0, 0, o.ex.w, o.ex.h)),
     onProgress: (p, t, d) => setMeter(p, '', `${fmtTime(t)} of ${fmtTime(d)}`),
     onDone: () => setTimeout(() => outs.forEach(o => o.rec.state !== 'inactive' && o.rec.stop()), 200),
   });
@@ -1352,16 +1580,24 @@ $('#exportBtn').addEventListener('click', async () => {
   if (blobs.some(b => !b.size)) { reportProblem('export', 'A video file came out empty'); return endEarly(''); }
   clearStep();
 
+  Object.values(results).forEach(r => URL.revokeObjectURL(r.url));
+  Object.keys(results).forEach(k => delete results[k]);
+  $('#fileRows').innerHTML = '';
   outs.forEach((o, n) => {
     const key = o.ex.key;
-    if (results[key]) URL.revokeObjectURL(results[key].url);
     results[key] = { url: URL.createObjectURL(blobs[n]), name: fileName(o.ex) };
-    $(`#name${key}`).textContent = results[key].name;
-    $(`#size${key}`).textContent = `${o.ex.w} × ${o.ex.h}, ${(blobs[n].size / 1e6).toFixed(1)} MB`;
+    const row = document.createElement('div');
+    row.className = 'file-row';
+    row.innerHTML = '<span><strong></strong><span class="help"></span></span><button class="secondary compact">Save</button>';
+    row.querySelector('strong').textContent = results[key].name;
+    row.querySelector('.help').textContent = `${o.ex.w} × ${o.ex.h}, ${(blobs[n].size / 1e6).toFixed(1)} MB`;
+    row.querySelector('button').addEventListener('click', () => download(key));
+    $('#fileRows').appendChild(row);
   });
+  $('#saveBoth span').textContent = outs.length > 1 ? 'Save both videos' : 'Save video';
   // Show a frame after the opening fade, not the first frame
   const v = $('#readyVideo');
-  v.src = results['640'].url;
+  v.src = results[outs[0].ex.key].url;
   v.addEventListener('loadeddata', () => { v.currentTime = Math.min(1.2, v.duration || 1.2); }, { once: true });
   showStep('ready');
   $('#saveBoth').focus();
@@ -1379,6 +1615,89 @@ if (window.self !== window.top) {
   new MutationObserver(report).observe(document.body, { subtree: true, attributes: true, attributeFilter: ['class'] });
   window.addEventListener('load', report);
 }
+
+/* ---------- Screens: controls ---------- */
+function syncSceneFields() {
+  const i = state.active;
+  $('#sceneLabel').textContent = `Scene ${i + 1}`;
+  $('#sceneHead').value = state.heads[i] || '';
+  $('#sceneMsg').value = state.cards[i] || '';
+  $('#sceneHours').checked = !!state.sceneHours[i];
+  $('#sceneLoader').checked = !!state.sceneLoader[i];
+}
+function applyTemplate(id) {
+  const tpl = TEMPLATES.find(x => x.id === id) || TEMPLATES[0];
+  stopPreview();
+  $('#screenTemplate').value = tpl.id;
+  state.cards = tpl.scenes.map(x => x.msg);
+  state.heads = tpl.scenes.map(x => x.head);
+  state.sceneHours = tpl.scenes.map(x => x.hours);
+  state.sceneLoader = tpl.scenes.map(x => x.loader);
+  state.aligns = tpl.scenes.map(() => 'center');
+  state.uploadTimes = null;
+  selectCard(0);
+}
+function setLogoMode(mode) {
+  state.logoMode = mode;
+  setSeg($('#logoModeSwitch'), 'logo', mode);
+  $('#screenLogoBtn').classList.toggle('hidden', mode !== 'upload');
+  $('#screenLogoBtn span').textContent = state.screenLogo ? 'Choose a different logo' : 'Choose a logo';
+  refresh();
+}
+// Switching keeps each format's own cards, so going back finds them as they were
+function setFormat(format) {
+  if (format === state.format || reading) return;
+  stopPreview();
+  const keep = ['cards', 'aligns', 'heads', 'sceneHours', 'sceneLoader', 'active', 'uploadTimes'];
+  state.saved[state.format] = Object.fromEntries(keep.map(k => [k, structuredClone(state[k])]));
+  state.saved[state.format + 'Mode'] = state.mode;
+  state.saved[state.format + 'Phone'] = $('#phone').value;
+  state.format = format;
+  document.documentElement.classList.toggle('screen', format === 'screen');
+  setSeg($('#formatSwitch'), 'fmt', format);
+  const back = state.saved[format];
+  if (back) keep.forEach(k => state[k] = back[k]);
+  if (format === 'screen') {
+    if (!back) applyTemplate('welcome');
+    $('#dropHelp').textContent = 'MP3, WAV, M4A or MP4. Plays under the scenes.';
+  } else {
+    $('#dropHelp').textContent = 'MP3, WAV, M4A or MP4. The words become your cards.';
+  }
+  // Each format keeps its own phone number; screens are for Convo support unless someone enters another
+  $('#phone').value = state.saved[format + 'Phone'] ?? (format === 'screen' ? formatPhone(SUPPORT_PHONE) : '');
+  syncFileHint();
+  // Screens are silent unless a voiceover is chosen; each format remembers its own choice
+  setMode(state.saved[format + 'Mode'] || (format === 'screen' ? 'none' : 'tts'));
+  selectCard(Math.min(state.active, state.cards.length - 1));
+}
+setupSeg($('#formatSwitch'), b => setFormat(b.dataset.fmt));
+setupSeg($('#voMode'), b => setMode(b.dataset.vo));
+setupSeg($('#logoModeSwitch'), b => {
+  setLogoMode(b.dataset.logo);
+  if (b.dataset.logo === 'upload' && !state.screenLogo) $('#logoInput').click();
+});
+$('#screenLogoBtn').addEventListener('click', () => $('#logoInput').click());
+$('#screenTemplate').innerHTML = TEMPLATES.map(x => `<option value="${x.id}">${x.name}</option>`).join('');
+$('#screenTemplate').addEventListener('change', e => applyTemplate(e.target.value));
+$('#sceneHead').addEventListener('input', e => { stopPreview(); state.heads[state.active] = e.target.value; drawStage(); drawThumb(state.active); });
+$('#sceneMsg').addEventListener('input', e => { stopPreview(); state.cards[state.active] = e.target.value; drawStage(); drawThumb(state.active); });
+$('#sceneHours').addEventListener('change', e => { stopPreview(); state.sceneHours[state.active] = e.target.checked; drawStage(); drawThumb(state.active); });
+$('#sceneLoader').addEventListener('change', e => { stopPreview(); state.sceneLoader[state.active] = e.target.checked; drawStage(); drawThumb(state.active); });
+// Business hours: chosen from lists, so every screen writes them the same way
+const fillSelect = (el, items, value) => { el.innerHTML = items.map(x => `<option>${x}</option>`).join(''); el.value = value; };
+fillSelect($('#dayFrom'), DAYS, state.hours.from);
+fillSelect($('#dayTo'), DAYS, state.hours.to);
+fillSelect($('#timeOpen'), TIMES, state.hours.open);
+fillSelect($('#timeClose'), TIMES, state.hours.close);
+fillSelect($('#timeZone'), ZONES, state.hours.tz);
+const syncHours = () => { $('#hoursPreview').textContent = hoursText(); };
+[['#dayFrom', 'from'], ['#dayTo', 'to'], ['#timeOpen', 'open'], ['#timeClose', 'close'], ['#timeZone', 'tz']].forEach(([sel, key]) =>
+  $(sel).addEventListener('change', e => { stopPreview(); state.hours[key] = e.target.value; syncHours(); refresh(); }));
+syncHours();
+$('#sceneSecs').addEventListener('input', e => { stopPreview(); state.sceneSecs = +e.target.value; $('#sceneSecsVal').textContent = `${state.sceneSecs} s`; });
+// The brand display face (GT Walsheim) is used only on the canvas here, so ask for it, then redraw
+const displayFace = token('--font-family-display');
+if (document.fonts && displayFace) Promise.all(['400', '500'].map(wt => document.fonts.load(`${wt} 46px ${displayFace}`))).then(() => refresh()).catch(() => {});
 
 selectCard(0);
 icons();
