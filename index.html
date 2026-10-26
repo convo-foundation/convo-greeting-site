@@ -295,8 +295,8 @@ if (window.self !== window.top) document.documentElement.classList.add('embed');
     <div class="strip" id="strip" aria-label="Message cards"></div>
     <div id="status" role="status" aria-live="polite"></div>
 
-    <input type="file" id="logoInput" accept="image/*" hidden>
-    <input type="file" id="bgInput" accept="image/*" hidden>
+    <input type="file" id="logoInput" accept="image/*,.heic,.heif" hidden>
+    <input type="file" id="bgInput" accept="image/*,.heic,.heif" hidden>
   </section>
 
   <aside class="inspector" aria-label="Settings">
@@ -407,7 +407,7 @@ if (window.self !== window.top) document.documentElement.classList.add('embed');
     </div>
   </aside>
 </main>
-<p class="app-version">Version v16 · Oct 26, 2026 8:44 AM</p>
+<p class="app-version">Version v17 · Oct 26, 2026 8:55 AM</p>
 <script>{ const v = document.querySelector('.app-version'); if (v.textContent.includes('__')) v.textContent = 'Local preview (not published)'; }</script>
 
 <div class="scrim problem hidden" id="problemSheet" role="alertdialog" aria-modal="true" aria-labelledby="problemTitle" aria-describedby="problemText">
@@ -452,10 +452,11 @@ const PROBLEMS = {
   voice:   ['We couldn\u2019t create the voice', 'The voice didn\u2019t load this time. This is usually a short hiccup, so please try again in a minute.'],
   speech:  ['We couldn\u2019t read your recording', 'The part that turns your recording into cards didn\u2019t load. Your recording is still here, so please try again in a minute.'],
   export:  ['Your video didn\u2019t finish', 'Something went wrong while making your video files. Please try exporting again.'],
+  image:   ['We couldn\u2019t open your picture', 'The part that opens iPhone (HEIC) pictures didn\u2019t load. Please try again in a minute, or save the picture as PNG or JPG.'],
   assets:  ['Part of this page didn\u2019t load', 'Some of the page\u2019s files didn\u2019t load, so things may look a little off. Refreshing the page usually fixes it.'],
   unknown: ['Something unexpected happened', 'Sorry about that! Refreshing the page usually helps.'],
 };
-const PROBLEM_CODES = { voice: 'CG-VOICE', speech: 'CG-SPEECH', export: 'CG-EXPORT', assets: 'CG-ASSETS', unknown: 'CG-UNKNOWN' };
+const PROBLEM_CODES = { voice: 'CG-VOICE', speech: 'CG-SPEECH', export: 'CG-EXPORT', image: 'CG-IMAGE', assets: 'CG-ASSETS', unknown: 'CG-UNKNOWN' };
 // The last progress message shown ("Loading the voice model…"), so a report says what the page was doing
 let lastStep = '';
 const noteStep = msg => { if (msg) lastStep = String(msg).replace(/…$/, ''); };
@@ -1016,12 +1017,31 @@ function selectCard(i) {
 }
 
 /* ---------- Images: drop onto the video ---------- */
-function loadImage(file, key) {
-  if (!file || !file.type.startsWith('image/')) return status('That file is not an image. Try PNG, JPG or SVG.', 'error');
+// iPhone photos are often HEIC, which only Safari can open. Those are converted in the browser first, with a
+// converter that is fetched only when one is added (it is large). Nothing is uploaded anywhere.
+const HEIC_TO = 'https://cdn.jsdelivr.net/npm/heic-to@1.6.6/dist/heic-to.js';
+const isHeicFile = f => /hei[cf]/i.test(f.type) || /\.hei[cf]$/i.test(f.name || '');
+const isImageFile = f => !!f && (f.type.startsWith('image/') || isHeicFile(f));
+async function loadImage(file, key) {
+  if (!isImageFile(file)) return status('That file is not an image. Try PNG, JPG, SVG or HEIC.', 'error');
+  let blob = file;
+  if (isHeicFile(file)) {
+    status('Converting your HEIC picture…');
+    let heicTo;
+    try { ({ heicTo } = await import(HEIC_TO)); }
+    catch (e) { status(''); return reportProblem('image', e); }
+    try {
+      // Logos keep any transparency (PNG); backgrounds become a JPG
+      blob = await heicTo({ blob: file, type: key === 'bg' ? 'image/jpeg' : 'image/png', quality: 0.92 });
+    } catch (e) {
+      console.error(e);
+      return status('That HEIC picture could not be converted. Try saving it as PNG or JPG first.', 'error');
+    }
+  }
   const img = new Image();
   img.onload = () => { state[key] = img; status(''); refresh(); };
   img.onerror = () => status('That picture could not be opened. Try saving it as PNG or JPG first.', 'error');
-  img.src = URL.createObjectURL(file);
+  img.src = URL.createObjectURL(blob);
 }
 $('#bgBtn').addEventListener('click', () => $('#bgInput').click());
 $('#bgInput').addEventListener('change', e => { loadImage(e.target.files[0], 'bg'); e.target.value = ''; });
@@ -1044,7 +1064,7 @@ stage.addEventListener('drop', e => {
   e.preventDefault();
   stage.classList.remove('over-bg'); $('#logoSlot').classList.remove('over');
   const file = e.dataTransfer.files[0];
-  if (file?.type.startsWith('image/')) {
+  if (isImageFile(file)) {
     if (isScreen()) { setLogoMode('upload'); loadImage(file, 'screenLogo'); } else loadImage(file, overLogo(e) ? 'logo' : 'bg');
   }
 });
