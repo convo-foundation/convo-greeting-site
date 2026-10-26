@@ -286,12 +286,17 @@ if (window.self !== window.top) document.documentElement.classList.add('embed');
           <button role="radio" aria-checked="false" data-align="right" aria-label="Align right" tabindex="-1"><i data-lucide="align-right"></i></button>
         </div>
       </div>
+      <div class="group" data-only="videomail">
+        <button class="ghost compact" id="bgBtn"><i data-lucide="image"></i><span>Add background image</span></button>
+        <button class="ghost icon hidden" id="bgRemove" aria-label="Remove background image"><i data-lucide="x"></i></button>
+      </div>
     </div>
 
     <div class="strip" id="strip" aria-label="Message cards"></div>
     <div id="status" role="status" aria-live="polite"></div>
 
     <input type="file" id="logoInput" accept="image/*" hidden>
+    <input type="file" id="bgInput" accept="image/*" hidden>
   </section>
 
   <aside class="inspector" aria-label="Settings">
@@ -402,7 +407,7 @@ if (window.self !== window.top) document.documentElement.classList.add('embed');
     </div>
   </aside>
 </main>
-<p class="app-version">Version v15 · Oct 23, 2026 10:28 AM</p>
+<p class="app-version">Version v16 · Oct 26, 2026 8:44 AM</p>
 <script>{ const v = document.querySelector('.app-version'); if (v.textContent.includes('__')) v.textContent = 'Local preview (not published)'; }</script>
 
 <div class="scrim problem hidden" id="problemSheet" role="alertdialog" aria-modal="true" aria-labelledby="problemTitle" aria-describedby="problemText">
@@ -516,6 +521,7 @@ const ease = (() => {
 const cv = $('#cv'), ctx = cv.getContext('2d');
 const W = cv.width, H = cv.height;
 const MAX_CARDS = 6;
+const BG_DIM = 0.35;               // how much a background picture is darkened under the text
 const MAX_REC_CARDS = 10, MAX_REC_SECONDS = 90; // cards made from a recording, and its longest length
 const INTRO = 0.7, TAIL = 0.6;     // seconds of opening animation before the voice, and hold after it
 // Brand motion timings (Motion section). Fixed here, because they are part of the video itself.
@@ -752,6 +758,8 @@ function render(c, opts = {}) {
     const s = Math.max(w / state.bg.width, h / state.bg.height);
     const bw = state.bg.width * s, bh = state.bg.height * s;
     c.drawImage(state.bg, (w - bw) / 2, (h - bh) / 2, bw, bh);
+    // A fixed dim (solid Black at 35%) so white name, title and messages stay readable on any picture
+    c.globalAlpha = bgAlpha * BG_DIM; c.fillStyle = black; c.fillRect(0, 0, w, h);
     c.globalAlpha = 1;
   }
 
@@ -945,6 +953,8 @@ function drawStage() {
   slot.setAttribute('aria-label', state.logo ? 'Replace logo' : 'Add your logo');
   Object.assign($('#logoRemove').style, { left: `calc(${pct(lr.x + lr.w, W)} - 14px)`, top: `calc(${pct(lr.y, H)} - 14px)` });
   $('#logoRemove').classList.toggle('hidden', !state.logo);
+  $('#bgBtn span').textContent = state.bg ? 'Change background image' : 'Add background image';
+  $('#bgRemove').classList.toggle('hidden', !state.bg);
 }
 const refresh = () => { drawStage(); drawThumbs(); };
 // A preview plays a snapshot of the cards and voice; changing them stops it (exports are locked behind their dialog)
@@ -1009,16 +1019,23 @@ function selectCard(i) {
 function loadImage(file, key) {
   if (!file || !file.type.startsWith('image/')) return status('That file is not an image. Try PNG, JPG or SVG.', 'error');
   const img = new Image();
-  img.onload = () => { state[key] = img; refresh(); };
+  img.onload = () => { state[key] = img; status(''); refresh(); };
+  img.onerror = () => status('That picture could not be opened. Try saving it as PNG or JPG first.', 'error');
   img.src = URL.createObjectURL(file);
 }
+$('#bgBtn').addEventListener('click', () => $('#bgInput').click());
+$('#bgInput').addEventListener('change', e => { loadImage(e.target.files[0], 'bg'); e.target.value = ''; });
+$('#bgRemove').addEventListener('click', () => { state.bg = null; refresh(); });
 $('#logoSlot').addEventListener('click', () => $('#logoInput').click());
 $('#logoInput').addEventListener('change', e => { loadImage(e.target.files[0], isScreen() ? 'screenLogo' : 'logo'); e.target.value = ''; });
 $('#logoRemove').addEventListener('click', () => { state.logo = null; refresh(); });
 
+const overLogo = e => !isScreen() && !!e.target.closest?.('.logo-slot');
 stage.addEventListener('dragover', e => {
   e.preventDefault();
-  $('#logoSlot').classList.add('over');
+  const logo = isScreen() || overLogo(e);
+  $('#logoSlot').classList.toggle('over', logo);
+  stage.classList.toggle('over-bg', !logo);
 });
 stage.addEventListener('dragleave', e => {
   if (!stage.contains(e.relatedTarget)) { stage.classList.remove('over-bg'); $('#logoSlot').classList.remove('over'); }
@@ -1028,7 +1045,7 @@ stage.addEventListener('drop', e => {
   stage.classList.remove('over-bg'); $('#logoSlot').classList.remove('over');
   const file = e.dataTransfer.files[0];
   if (file?.type.startsWith('image/')) {
-    if (isScreen()) { setLogoMode('upload'); loadImage(file, 'screenLogo'); } else loadImage(file, 'logo');
+    if (isScreen()) { setLogoMode('upload'); loadImage(file, 'screenLogo'); } else loadImage(file, overLogo(e) ? 'logo' : 'bg');
   }
 });
 // Stop the browser from opening files dropped elsewhere
