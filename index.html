@@ -222,6 +222,8 @@
                  background-position: calc(100% - 20px) 50%, calc(100% - 15px) 50%; background-size: 5px 5px; background-repeat: no-repeat; }
   .pair { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 8px; }
   .pair span { color: var(--felt-text-muted); }
+  .voice-pair { grid-template-columns: 1fr 1fr; }
+  .voice-pick { display: grid; gap: 6px; font-size: var(--felt-text-xxs-size); }
   .row input[type=checkbox] { width: 20px; height: 20px; accent-color: var(--action-primary-bg); }
   .row .range-wrap { display: flex; align-items: center; gap: 8px; }
   .row .range-wrap input[type=range] { width: 110px; }
@@ -366,10 +368,9 @@ if (window.self !== window.top) document.documentElement.classList.add('embed');
         <button role="radio" aria-checked="false" data-vo="upload" tabindex="-1">Recording</button>
       </div>
       <div data-pane="tts" style="display:grid;gap:12px">
-        <div class="seg" role="radiogroup" aria-label="Voice" id="voiceSwitch">
-          <button role="radio" aria-checked="false" data-voice="male" tabindex="-1">Male</button>
-          <button role="radio" aria-checked="true" data-voice="female">Female</button>
-          <button role="radio" aria-checked="false" data-voice="neutral" tabindex="-1">Neutral</button>
+        <div class="pair voice-pair">
+          <label class="voice-pick"><span>Gender voice over</span><select class="field" id="voiceGender"></select></label>
+          <label class="voice-pick"><span>Age range</span><select class="field" id="voiceAge"></select></label>
         </div>
         <div style="display:grid;gap:8px">
           <div class="field-head">
@@ -407,7 +408,7 @@ if (window.self !== window.top) document.documentElement.classList.add('embed');
     </div>
   </aside>
 </main>
-<p class="app-version">Version v17 · Oct 26, 2026 8:55 AM</p>
+<p class="app-version">Version v18 · Oct 30, 2026 3:02 PM</p>
 <script>{ const v = document.querySelector('.app-version'); if (v.textContent.includes('__')) v.textContent = 'Local preview (not published)'; }</script>
 
 <div class="scrim problem hidden" id="problemSheet" role="alertdialog" aria-modal="true" aria-labelledby="problemTitle" aria-describedby="problemText">
@@ -568,7 +569,7 @@ const state = {
   cards: ['Please leave a message and contact information. Thank you.'],
   aligns: ['center'],
   active: 0,
-  mode: 'tts', gender: 'female', msgStyle: 'dark',
+  mode: 'tts', gender: 'female', age: '25-34', msgStyle: 'dark',
   ttsVoice: null,     // { buffer, timeline, key }: the created voice, its exact card timings, and what it was made from
   uploadBuffer: null, // an uploaded recording, decoded
   uploadTimes: null,  // [{ start, end }] per card, from the words in the recording
@@ -586,7 +587,8 @@ const hoursText = () => { const h = state.hours; return `${h.from === h.to ? h.f
 // The official wordmark, from the brand CDN (it allows canvas use, so exports stay possible)
 const convoWordmark = new Image();
 convoWordmark.crossOrigin = 'anonymous';
-convoWordmark.onload = () => typeof refresh === 'function' && refresh();
+// It can arrive before the rest of the app has started; the first draw picks it up then
+convoWordmark.onload = () => { try { refresh(); } catch {} };
 convoWordmark.src = 'https://brand.convo.io/cdn/v1/assets/logo/wordmark/Convo_Wordmark_Evergreen.svg';
 let audioCtx;
 const getAudioCtx = () => (audioCtx ||= new (window.AudioContext || window.webkitAudioContext)());
@@ -667,7 +669,6 @@ function setupSeg(el, onChange) {
     if (d) { e.preventDefault(); select(opts[(i + d + opts.length) % opts.length], true); }
   });
 }
-setupSeg($('#voiceSwitch'), b => { stopPreview(); state.gender = b.dataset.voice; });
 $('#pronounce').addEventListener('input', () => stopPreview());
 setupSeg($('#styleSwitch'), b => { state.msgStyle = b.dataset.style; refresh(); });
 setupSeg($('#layoutSwitch'), b => { state.layout = b.dataset.layout; refresh(); });
@@ -1278,7 +1279,7 @@ function timeline(cards, duration) {
 }
 const estimateDuration = cards => Math.max(3, cards.join(' ').split(/\s+/).length / 2.5 + 0.5);
 // The voice in use: the uploaded file, or the created voice if it still matches the cards, voice and pronunciations
-const voiceKey = () => JSON.stringify([state.gender, cardTexts(), pronunciations()]);
+const voiceKey = () => JSON.stringify([state.gender, state.age, cardTexts(), pronunciations()]);
 const activeVoice = () => state.mode === 'none' ? null : state.mode === 'upload'
   ? (state.uploadBuffer && { buffer: state.uploadBuffer, timeline: uploadTimeline() })
   : (state.ttsVoice?.key === voiceKey() ? state.ttsVoice : null);
@@ -1292,7 +1293,41 @@ const cardIndexAt = (tl, t) => { const i = tl.findIndex(c => t >= c.start && t <
 
 /* ---------- Text to voice (Kokoro, runs in the browser, regular pace) ---------- */
 // Kokoro has no truly gender-neutral voice; "Neutral" uses its calmest, least pitched voice.
-const VOICES = { female: 'af_heart', male: 'am_michael', neutral: 'af_sky' };
+// The voice engine has adult female and male voices only. Gender and age come across mostly through pitch and pace,
+// so each choice is a base voice moved by a few semitones and spoken a little quicker or slower.
+// Non-binary: a voice lowered into the range between typical male and female speaking pitch.
+const GENDERS = [
+  { id: 'female', label: 'Female', voice: 'af_heart', semitones: 0 },
+  { id: 'male', label: 'Male', voice: 'am_michael', semitones: 0 },
+  { id: 'nonbinary', label: 'Non-binary', voice: 'af_sky', semitones: -1.5 }, // measured ~150–165 Hz: between typical male and female
+  { id: 'nopref', label: 'No preference', voice: 'af_heart', semitones: 0 },
+];
+const AGES = [
+  { id: '13-17', label: '13–17', semitones: 1.5, pace: 1.04 },
+  { id: '18-24', label: '18–24', semitones: 0.8, pace: 1.02 },
+  { id: '25-34', label: '25–34', semitones: 0, pace: 1 },
+  { id: '35-44', label: '35–44', semitones: -0.4, pace: 0.98 },
+  { id: '45-54', label: '45–54', semitones: -0.8, pace: 0.96 },
+  { id: '55-64', label: '55–64', semitones: -1.2, pace: 0.94 },
+  { id: '65+', label: '65 and older', semitones: -1.6, pace: 0.92 },
+];
+const voiceProfile = () => {
+  const g = GENDERS.find(x => x.id === state.gender) || GENDERS[0], a = AGES.find(x => x.id === state.age) || AGES[2];
+  return { voice: g.voice, ratio: 2 ** ((g.semitones + a.semitones) / 12), pace: a.pace, label: `${g.label.toLowerCase()}, ${a.label}` };
+};
+// Speak with the chosen profile. Pitch moves by resampling, which also changes pace by the same ratio,
+// so the engine is asked to speak at pace ÷ ratio and the result lands at the intended pace.
+async function speak(text) {
+  const p = voiceProfile();
+  const out = await ttsCall({ type: 'speak', text, voice: p.voice, speed: p.pace / p.ratio });
+  if (Math.abs(p.ratio - 1) < 1e-3) return out;
+  const src = out.audio, len = Math.floor(src.length / p.ratio), audio = new Float32Array(len);
+  for (let i = 0; i < len; i++) {
+    const x = i * p.ratio, j = Math.floor(x), f = x - j;
+    audio[i] = src[j] * (1 - f) + (src[j + 1] ?? src[j]) * f;
+  }
+  return { audio, rate: out.rate };
+}
 // Kokoro runs in a background worker: creating speech is heavy, and on the page itself it would freeze everything.
 const TTS_WORKER = `
 import { KokoroTTS } from 'https://cdn.jsdelivr.net/npm/kokoro-js@1.2.1/+esm';
@@ -1304,7 +1339,7 @@ self.onmessage = async ({ data }) => {
       progress_callback: p => { if (p.status === 'progress' && p.file.endsWith('.onnx')) self.postMessage({ type: 'progress', progress: p.progress }); },
     });
     if (data.type === 'load') return self.postMessage({ id: data.id, type: 'done' });
-    const out = await tts.generate(data.text, { voice: data.voice });
+    const out = await tts.generate(data.text, { voice: data.voice, speed: data.speed || 1 });
     self.postMessage({ id: data.id, type: 'done', audio: out.audio, rate: out.sampling_rate }, [out.audio.buffer]);
   } catch (e) {
     self.postMessage({ id: data.id, type: 'error', message: String(e && e.message || e) });
@@ -1362,18 +1397,18 @@ const spokenParts = card => card.split('\n').map(l => speakable(applyPronunciati
 // report(message, fraction) shows progress; shouldStop() lets an export stop part way.
 async function ensureVoice(report, shouldStop = () => false) {
   if (!needsVoice()) return;
-  const cards = cardTexts(), key = voiceKey(), voice = VOICES[state.gender];
+  const cards = cardTexts(), key = voiceKey();
   report('Loading the voice model…', 0);
   await ttsCall({ type: 'load' }, report);
   // Voice each card in turn, sentence by sentence, then join into one continuous track
   let rate = 24000;
   const cardAudio = [];
   for (let c = 0; c < cards.length; c++) {
-    report(`Creating the ${state.gender} voiceover: ${unitName().toLowerCase()} ${c + 1} of ${cards.length}`, c / cards.length);
+    report(`Creating the voiceover (${voiceProfile().label}): ${unitName().toLowerCase()} ${c + 1} of ${cards.length}`, c / cards.length);
     const parts = [];
     for (const s of spokenParts(cards[c])) {
       if (shouldStop()) throw new Error('stopped');
-      const out = await ttsCall({ type: 'speak', text: s, voice });
+      const out = await speak(s);
       parts.push(out.audio); rate = out.rate;
     }
     cardAudio.push(parts);
@@ -1404,7 +1439,7 @@ $('#hearBtn').addEventListener('click', async () => {
   try {
     await ttsCall({ type: 'load' }, msg => status(msg));
     status('Creating a sample…');
-    const out = await ttsCall({ type: 'speak', text: applyPronunciations(words.join(', ')), voice: VOICES[state.gender] });
+    const out = await speak(applyPronunciations(words.join(', ')));
     const ac = getAudioCtx(); ac.resume();
     const buf = ac.createBuffer(1, out.audio.length, out.rate);
     buf.getChannelData(0).set(out.audio);
@@ -1652,6 +1687,13 @@ if (window.self !== window.top) {
   new MutationObserver(report).observe(document.body, { subtree: true, attributes: true, attributeFilter: ['class'] });
   window.addEventListener('load', report);
 }
+
+/* ---------- Voice: gender and age range, as on the Convo Greeting form ---------- */
+$('#voiceGender').innerHTML = GENDERS.map(g => `<option value="${g.id}">${g.label}</option>`).join('');
+$('#voiceAge').innerHTML = AGES.map(a => `<option value="${a.id}">${a.label}</option>`).join('');
+$('#voiceGender').value = state.gender; $('#voiceAge').value = state.age;
+$('#voiceGender').addEventListener('change', e => { stopPreview(); state.gender = e.target.value; });
+$('#voiceAge').addEventListener('change', e => { stopPreview(); state.age = e.target.value; });
 
 /* ---------- Screens: controls ---------- */
 function syncSceneFields() {
