@@ -224,6 +224,8 @@
   .pair span { color: var(--felt-text-muted); }
   .voice-pair { grid-template-columns: 1fr 1fr; }
   .voice-pick { display: grid; gap: 6px; font-size: var(--felt-text-xxs-size); }
+  .voice-try { min-height: 0; }
+  .voice-try .value { font-size: var(--felt-text-xxs-size); }
   .row input[type=checkbox] { width: 20px; height: 20px; accent-color: var(--action-primary-bg); }
   .row .range-wrap { display: flex; align-items: center; gap: 8px; }
   .row .range-wrap input[type=range] { width: 110px; }
@@ -372,6 +374,16 @@ if (window.self !== window.top) document.documentElement.classList.add('embed');
           <label class="voice-pick"><span>Gender voice over</span><select class="field" id="voiceGender"></select></label>
           <label class="voice-pick"><span>Age range</span><select class="field" id="voiceAge"></select></label>
         </div>
+        <div class="row voice-try">
+          <button class="ghost compact" id="nextVoice"><i data-lucide="shuffle"></i><span>Try another voice</span></button>
+          <span class="value" id="voiceWhich"></span>
+        </div>
+        <label class="voice-pick" id="voiceSetPick">Voice set
+          <select class="field" id="voiceEngine">
+            <option value="eleven">ElevenLabs voices</option>
+            <option value="kokoro">Original voices</option>
+          </select>
+        </label>
         <div style="display:grid;gap:8px">
           <div class="field-head">
             <label for="pronounce">Pronunciation</label>
@@ -408,7 +420,7 @@ if (window.self !== window.top) document.documentElement.classList.add('embed');
     </div>
   </aside>
 </main>
-<p class="app-version">Version v18 · Oct 30, 2026 3:02 PM</p>
+<p class="app-version">Version v19 · Nov 9, 2026 2:43 PM</p>
 <script>{ const v = document.querySelector('.app-version'); if (v.textContent.includes('__')) v.textContent = 'Local preview (not published)'; }</script>
 
 <div class="scrim problem hidden" id="problemSheet" role="alertdialog" aria-modal="true" aria-labelledby="problemTitle" aria-describedby="problemText">
@@ -569,7 +581,7 @@ const state = {
   cards: ['Please leave a message and contact information. Thank you.'],
   aligns: ['center'],
   active: 0,
-  mode: 'tts', gender: 'female', age: '25-34', msgStyle: 'dark',
+  mode: 'tts', gender: 'female', age: '25-34', engine: 'kokoro', voicePick: {}, elevenDown: false, msgStyle: 'dark',
   ttsVoice: null,     // { buffer, timeline, key }: the created voice, its exact card timings, and what it was made from
   uploadBuffer: null, // an uploaded recording, decoded
   uploadTimes: null,  // [{ start, end }] per card, from the words in the recording
@@ -1279,7 +1291,7 @@ function timeline(cards, duration) {
 }
 const estimateDuration = cards => Math.max(3, cards.join(' ').split(/\s+/).length / 2.5 + 0.5);
 // The voice in use: the uploaded file, or the created voice if it still matches the cards, voice and pronunciations
-const voiceKey = () => JSON.stringify([state.gender, state.age, cardTexts(), pronunciations()]);
+const voiceKey = () => JSON.stringify([engineNow(), state.gender, state.age, engineNow() === 'eleven' ? elevenPick()?.voice.id : '', cardTexts(), pronunciations()]);
 const activeVoice = () => state.mode === 'none' ? null : state.mode === 'upload'
   ? (state.uploadBuffer && { buffer: state.uploadBuffer, timeline: uploadTimeline() })
   : (state.ttsVoice?.key === voiceKey() ? state.ttsVoice : null);
@@ -1311,14 +1323,53 @@ const AGES = [
   { id: '55-64', label: '55–64', semitones: -1.2, pace: 0.94 },
   { id: '65+', label: '65 and older', semitones: -1.6, pace: 0.92 },
 ];
+/* ElevenLabs: real voices labelled by gender and age, reached through the Convo Greeting voice connector
+   (connector/worker.js), which holds the API key. Leave VOICE_CONNECTOR empty to use the original voices only. */
+const VOICE_CONNECTOR = '';
+// For local testing only, a connector address can be given in the page address (?connector=…)
+const connectorUrl = () => (location.hostname === 'localhost' && new URLSearchParams(location.search).get('connector')) || VOICE_CONNECTOR;
+// The form's seven age ranges map onto ElevenLabs' three age labels
+const ELEVEN_AGE = { '13-17': 'young', '18-24': 'young', '25-34': 'middle aged', '35-44': 'middle aged', '45-54': 'middle aged', '55-64': 'old', '65+': 'old' };
+const ELEVEN_GENDER = { female: ['female'], male: ['male'], nonbinary: ['neutral', 'non binary', 'nonbinary'], nopref: ['female'] };
+let elevenVoices = null; // the account's voices, read once
+async function loadElevenVoices() {
+  if (elevenVoices) return elevenVoices;
+  const r = await fetch(connectorUrl() + '/voices');
+  if (!r.ok) throw new Error(`Voice connector: ${r.status} ${(await r.text()).slice(0, 200)}`);
+  elevenVoices = (await r.json()).voices.filter(v => v.gender);
+  return elevenVoices;
+}
+// Voices for the chosen gender and age (American accent first); widen to the gender, then to everyone, if none match
+function elevenChoices() {
+  const vs = elevenVoices || [], genders = ELEVEN_GENDER[state.gender] || ['female'], age = ELEVEN_AGE[state.age];
+  const byAccent = list => [...list].sort((a, b) => (b.accent === 'american') - (a.accent === 'american') || a.name.localeCompare(b.name));
+  const exact = vs.filter(v => genders.includes(v.gender) && v.age === age);
+  if (exact.length) return byAccent(exact);
+  const sameGender = vs.filter(v => genders.includes(v.gender));
+  return byAccent(sameGender.length ? sameGender : vs);
+}
+const engineNow = () => state.engine === 'eleven' && connectorUrl() && !state.elevenDown ? 'eleven' : 'kokoro';
+const voiceSlot = () => `${state.gender}|${state.age}`;
+const elevenPick = () => { const list = elevenChoices(); if (!list.length) return null; const n = (state.voicePick[voiceSlot()] || 0) % list.length; return { voice: list[n], n, of: list.length }; };
 const voiceProfile = () => {
   const g = GENDERS.find(x => x.id === state.gender) || GENDERS[0], a = AGES.find(x => x.id === state.age) || AGES[2];
-  return { voice: g.voice, ratio: 2 ** ((g.semitones + a.semitones) / 12), pace: a.pace, label: `${g.label.toLowerCase()}, ${a.label}` };
+  const label = `${g.label.toLowerCase()}, ${a.label}`;
+  if (engineNow() === 'eleven') { const p = elevenPick(); return { engine: 'eleven', voiceId: p?.voice.id, pace: a.pace, label: p ? `${label}, ${p.voice.name}` : label }; }
+  return { engine: 'kokoro', voice: g.voice, ratio: 2 ** ((g.semitones + a.semitones) / 12), pace: a.pace, label };
 };
+const loadVoices = async report => engineNow() === 'eleven' ? loadElevenVoices() : ttsCall({ type: 'load' }, report);
 // Speak with the chosen profile. Pitch moves by resampling, which also changes pace by the same ratio,
 // so the engine is asked to speak at pace ÷ ratio and the result lands at the intended pace.
 async function speak(text) {
   const p = voiceProfile();
+  if (p.engine === 'eleven') {
+    if (!p.voiceId) throw new Error('No ElevenLabs voices in the account yet');
+    const r = await fetch(connectorUrl() + '/tts', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ voiceId: p.voiceId, text, speed: p.pace }) });
+    if (!r.ok) throw Object.assign(new Error(`ElevenLabs: ${r.status} ${(await r.text()).slice(0, 200)}`), { eleven: true });
+    const buf = await getAudioCtx().decodeAudioData(await r.arrayBuffer());
+    return { audio: buf.getChannelData(0).slice(), rate: buf.sampleRate };
+  }
   const out = await ttsCall({ type: 'speak', text, voice: p.voice, speed: p.pace / p.ratio });
   if (Math.abs(p.ratio - 1) < 1e-3) return out;
   const src = out.audio, len = Math.floor(src.length / p.ratio), audio = new Float32Array(len);
@@ -1398,20 +1449,31 @@ const spokenParts = card => card.split('\n').map(l => speakable(applyPronunciati
 async function ensureVoice(report, shouldStop = () => false) {
   if (!needsVoice()) return;
   const cards = cardTexts(), key = voiceKey();
-  report('Loading the voice model…', 0);
-  await ttsCall({ type: 'load' }, report);
+  report('Loading the voices…', 0);
   // Voice each card in turn, sentence by sentence, then join into one continuous track
   let rate = 24000;
   const cardAudio = [];
-  for (let c = 0; c < cards.length; c++) {
-    report(`Creating the voiceover (${voiceProfile().label}): ${unitName().toLowerCase()} ${c + 1} of ${cards.length}`, c / cards.length);
-    const parts = [];
-    for (const s of spokenParts(cards[c])) {
-      if (shouldStop()) throw new Error('stopped');
-      const out = await speak(s);
-      parts.push(out.audio); rate = out.rate;
+  try {
+    await loadVoices(report);
+    for (let c = 0; c < cards.length; c++) {
+      report(`Creating the voiceover (${voiceProfile().label}): ${unitName().toLowerCase()} ${c + 1} of ${cards.length}`, c / cards.length);
+      const parts = [];
+      for (const s of spokenParts(cards[c])) {
+        if (shouldStop()) throw new Error('stopped');
+        const out = await speak(s);
+        parts.push(out.audio); rate = out.rate;
+      }
+      cardAudio.push(parts);
     }
-    cardAudio.push(parts);
+  } catch (e) {
+    // ElevenLabs unreachable, out of credits or refusing: finish with the original voices instead of failing
+    if (e.message === 'stopped' || engineNow() !== 'eleven') throw e;
+    console.error(e);
+    state.elevenDown = true; syncVoiceWhich();
+    noteStep('ElevenLabs unavailable: ' + e.message);
+    const done = await ensureVoice(report, shouldStop);
+    status('ElevenLabs voices are unavailable right now, so the original voice was used.', 'error');
+    return done;
   }
   const sentenceGap = Math.round(rate * 0.2), cardGap = Math.round(rate * 0.5);
   const total = cardAudio.reduce((n, parts) => n + parts.reduce((m, p) => m + p.length + sentenceGap, 0) + cardGap, 0);
@@ -1437,7 +1499,7 @@ $('#hearBtn').addEventListener('click', async () => {
   if (sampling) return;
   sampling = true; $('#hearBtn').disabled = true;
   try {
-    await ttsCall({ type: 'load' }, msg => status(msg));
+    await loadVoices(msg => status(msg));
     status('Creating a sample…');
     const out = await speak(applyPronunciations(words.join(', ')));
     const ac = getAudioCtx(); ac.resume();
@@ -1692,8 +1754,42 @@ if (window.self !== window.top) {
 $('#voiceGender').innerHTML = GENDERS.map(g => `<option value="${g.id}">${g.label}</option>`).join('');
 $('#voiceAge').innerHTML = AGES.map(a => `<option value="${a.id}">${a.label}</option>`).join('');
 $('#voiceGender').value = state.gender; $('#voiceAge').value = state.age;
-$('#voiceGender').addEventListener('change', e => { stopPreview(); state.gender = e.target.value; });
-$('#voiceAge').addEventListener('change', e => { stopPreview(); state.age = e.target.value; });
+$('#voiceGender').addEventListener('change', e => { stopPreview(); state.gender = e.target.value; syncVoiceWhich(); });
+$('#voiceAge').addEventListener('change', e => { stopPreview(); state.age = e.target.value; syncVoiceWhich(); });
+// Voice set: ElevenLabs when the connector is set up, otherwise the original voices only
+$('#voiceSetPick').classList.toggle('hidden', !connectorUrl());
+if (connectorUrl()) { state.engine = 'eleven'; loadElevenVoices().then(syncVoiceWhich).catch(e => { console.error(e); state.elevenDown = true; syncVoiceWhich(); }); }
+$('#voiceEngine').value = state.engine;
+$('#voiceEngine').addEventListener('change', e => {
+  stopPreview(); state.engine = e.target.value; state.elevenDown = false;
+  if (state.engine === 'eleven') loadElevenVoices().then(syncVoiceWhich).catch(err => { console.error(err); state.elevenDown = true; syncVoiceWhich(); });
+  syncVoiceWhich();
+});
+function syncVoiceWhich() {
+  const eleven = engineNow() === 'eleven', p = eleven && elevenPick();
+  $('#nextVoice').classList.toggle('hidden', !p || p.of < 2);
+  $('#voiceWhich').textContent = p ? `${p.voice.name} · ${p.n + 1} of ${p.of}` : state.engine === 'eleven' && state.elevenDown ? 'ElevenLabs unavailable · original voice' : '';
+}
+// Hear the next matching voice at once, so choosing is quick
+let trying = false;
+$('#nextVoice').addEventListener('click', async () => {
+  if (trying) return;
+  stopPreview();
+  const slot = voiceSlot();
+  state.voicePick[slot] = ((state.voicePick[slot] || 0) + 1) % Math.max(1, elevenChoices().length);
+  syncVoiceWhich();
+  trying = true; $('#nextVoice').disabled = true;
+  try {
+    const out = await speak('Hello, thank you for calling. Please leave a message.');
+    const ac = getAudioCtx(); ac.resume();
+    const buf = ac.createBuffer(1, out.audio.length, out.rate); buf.getChannelData(0).set(out.audio);
+    const src = ac.createBufferSource(); src.buffer = buf; src.connect(ac.destination); src.start();
+    status(`Playing ${elevenPick()?.voice.name || 'voice'}`);
+    src.onended = () => { if ($('#status').textContent.startsWith('Playing ')) status(''); };
+  } catch (e) { status(''); reportProblem('voice', e); }
+  finally { trying = false; $('#nextVoice').disabled = false; }
+});
+syncVoiceWhich();
 
 /* ---------- Screens: controls ---------- */
 function syncSceneFields() {
