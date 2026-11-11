@@ -420,7 +420,7 @@ if (window.self !== window.top) document.documentElement.classList.add('embed');
     </div>
   </aside>
 </main>
-<p class="app-version">Version v19 · Nov 9, 2026 2:43 PM</p>
+<p class="app-version">Version v20 · Nov 11, 2026 11:48 AM</p>
 <script>{ const v = document.querySelector('.app-version'); if (v.textContent.includes('__')) v.textContent = 'Local preview (not published)'; }</script>
 
 <div class="scrim problem hidden" id="problemSheet" role="alertdialog" aria-modal="true" aria-labelledby="problemTitle" aria-describedby="problemText">
@@ -1325,7 +1325,7 @@ const AGES = [
 ];
 /* ElevenLabs: real voices labelled by gender and age, reached through the Convo Greeting voice connector
    (connector/worker.js), which holds the API key. Leave VOICE_CONNECTOR empty to use the original voices only. */
-const VOICE_CONNECTOR = '';
+const VOICE_CONNECTOR = 'https://convo-greeting-voices.jay-96c.workers.dev';
 // For local testing only, a connector address can be given in the page address (?connector=…)
 const connectorUrl = () => (location.hostname === 'localhost' && new URLSearchParams(location.search).get('connector')) || VOICE_CONNECTOR;
 // The form's seven age ranges map onto ElevenLabs' three age labels
@@ -1336,7 +1336,8 @@ async function loadElevenVoices() {
   if (elevenVoices) return elevenVoices;
   const r = await fetch(connectorUrl() + '/voices');
   if (!r.ok) throw new Error(`Voice connector: ${r.status} ${(await r.text()).slice(0, 200)}`);
-  elevenVoices = (await r.json()).voices.filter(v => v.gender);
+  // ElevenLabs names carry a description ("Bella - Professional, Bright, Warm"); staff see the first name
+  elevenVoices = (await r.json()).voices.filter(v => v.gender).map(v => ({ ...v, name: v.name.split(' - ')[0].trim() }));
   return elevenVoices;
 }
 // Voices for the chosen gender and age (American accent first); widen to the gender, then to everyone, if none match
