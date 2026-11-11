@@ -1,0 +1,18 @@
+{
+  "about": "What's new in Convo Greeting, newest first. With each release that staff will notice, add an entry with the version number as id, two to six short, friendly notes, and optional screenshots in updates/. The voice connector posts each new entry to #convo-hub as the Convo Greeting Slack app.",
+  "releases": [
+    {
+      "id": 21,
+      "date": "2026-11-11",
+      "notes": [
+        "Convo Greeting has its own link now: https://convo-foundation.github.io/convo-greeting-site/",
+        "Sign in with your Convo work account (@convorelay.com, @convo.io or @convoaustralia.com), the same way as Convo Hub",
+        "Voices now come from ElevenLabs: real voices picked by the *Gender voice over* and *Age range* from the form",
+        "*Try another voice* plays the next matching voice, so you can choose by ear",
+        "Non-binary uses ElevenLabs' neutral voice",
+        "If ElevenLabs is ever unavailable, the greeting is made with the original voice instead, so it never fails"
+      ],
+      "images": ["updates/v21-1-sign-in.png", "updates/v21-2-convo-greeting.png", "updates/v21-3-voice-choices.png"]
+    }
+  ]
+}
