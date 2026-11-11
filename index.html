@@ -193,6 +193,21 @@
   /* Browsers that cannot export MP4 (e.g. Firefox): same note, shown at any size */
   .unsupported-note { display: none; }
   html.unsupported .topbar, html.unsupported main, html.unsupported .scrim, html.unsupported .small-screen { display: none !important; }
+  /* Sign-in: Convo staff only, with the same Google sign-in as Convo Hub */
+  .signin-gate { display: none; }
+  html.signed-out .topbar, html.signed-out main, html.signed-out .scrim { display: none !important; }
+  html.signed-out:not(.unsupported) .signin-gate { display: grid; justify-items: center; gap: var(--felt-space-xs); text-align: center;
+                                                  padding: var(--felt-space-l, 48px) 24px; max-width: 440px; margin: 0 auto; }
+  html.signed-out.unsupported .signin-gate, html.signed-out .small-screen { display: none !important; }
+  @media (max-width: 719px), (pointer: coarse) and (max-height: 500px) { html.signed-out .signin-gate { display: none !important; } html.signed-out .small-screen { display: grid !important; } }
+  .signin-gate img { height: 32px; margin-bottom: 8px; }
+  .signin-gate h2 { margin: 0; font-family: var(--font-family-display); font-weight: var(--font-weight-medium);
+                    font-size: var(--felt-text-l-size); line-height: var(--felt-text-l-line); letter-spacing: var(--felt-text-l-tracking); }
+  .signin-gate p { margin: 0; color: var(--felt-text-muted); font-size: var(--felt-text-s-size); line-height: var(--felt-text-s-line); }
+  .signin-gate button { margin-top: 12px; }
+  .signin-gate .help[data-tone="error"] { color: var(--status-critical-fg); }
+  .account { color: var(--felt-text-muted); font-size: var(--felt-text-xxs-size); text-align: center; margin: 0; padding-bottom: var(--felt-space-xs); }
+  .account button { min-height: 0; padding: 0 4px; font-size: inherit; color: inherit; text-decoration: underline; background: none; }
   html.unsupported .unsupported-note { display: grid; justify-items: center; gap: var(--felt-space-xs); text-align: center;
                                        padding: var(--felt-space-l, 48px) 24px; max-width: 460px; margin: 0 auto; }
   .small-screen svg.lucide, .unsupported-note svg.lucide { width: 40px; height: 40px; color: var(--felt-primary); }
@@ -235,6 +250,7 @@
 <body>
 <script>
 if (window.self !== window.top) document.documentElement.classList.add('embed');
+document.documentElement.classList.add('signed-out'); // until Convo sign-in is confirmed
 // The greeting is exported as MP4 recorded from the canvas; without that this browser cannot make one
 (function () {
   var mp4 = ['video/mp4;codecs=avc1.42E01E,mp4a.40.2', 'video/mp4;codecs=avc1.42E01E', 'video/mp4'];
@@ -247,6 +263,13 @@ if (window.self !== window.top) document.documentElement.classList.add('embed');
   if (!ok) document.documentElement.classList.add('unsupported');
 })();
 </script>
+<section class="signin-gate" aria-label="Sign in">
+  <img src="https://brand.convo.io/cdn/v1/assets/logo/wordmark/Convo_Wordmark_Evergreen.svg" alt="Convo">
+  <h2>Sign in to Convo Greeting</h2>
+  <p>Use your Convo work account: @convorelay.com, @convo.io or @convoaustralia.com.</p>
+  <button class="primary" id="signInBtn">Continue with Google</button>
+  <p class="help" id="signInError" role="alert"></p>
+</section>
 <section class="unsupported-note" aria-label="Browser not supported">
   <svg class="lucide" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20"/><path d="M2 12h20"/></svg>
   <h2>Convo Greeting doesn't work in this browser</h2>
@@ -420,7 +443,45 @@ if (window.self !== window.top) document.documentElement.classList.add('embed');
     </div>
   </aside>
 </main>
-<p class="app-version">Version v20 · Nov 11, 2026 11:48 AM</p>
+<p class="app-version">Version v21 · Nov 11, 2026 12:04 PM</p>
+<p class="account hidden" id="account"><span id="accountEmail"></span> · <button id="signOutBtn">Sign out</button></p>
+<script type="module">
+// Sign-in, shared with Convo Hub: its Firebase project already refuses any account outside Convo's domains, and the
+// voice connector checks the same sign-in on every request.
+import { initializeApp } from 'https://www.gstatic.com/firebasejs/13.1.0/firebase-app.js';
+import { getAuth, GoogleAuthProvider, onAuthStateChanged, signInWithPopup, signOut } from 'https://www.gstatic.com/firebasejs/13.1.0/firebase-auth.js';
+const DOMAINS = ['convorelay.com', 'convo.io', 'convoaustralia.com'];
+const isConvo = email => DOMAINS.some(d => String(email || '').toLowerCase().endsWith('@' + d));
+const app = initializeApp({ apiKey: 'AIzaSyDNinRwcfaz2OUmMqFnvKMvMnAootQUxOo', authDomain: 'convo-hub-app.firebaseapp.com',
+                            projectId: 'convo-hub-app', appId: '1:530875949111:web:eec493c702192fd3129fb2' });
+const auth = getAuth(app);
+const provider = new GoogleAuthProvider();
+provider.setCustomParameters({ hd: '*', prompt: 'select_account' }); // work (Google Workspace) accounts in the picker
+const $ = s => document.querySelector(s);
+const showError = msg => { $('#signInError').textContent = msg || ''; $('#signInError').dataset.tone = msg ? 'error' : ''; };
+// The rest of the app asks for a fresh token when it calls the voice connector
+window.cgAuth = { token: () => auth.currentUser ? auth.currentUser.getIdToken() : Promise.resolve(null), email: () => auth.currentUser?.email || '' };
+onAuthStateChanged(auth, async user => {
+  if (user && !isConvo(user.email)) { await signOut(auth); showError('Convo Greeting is for Convo staff. Choose your Convo work account.'); return; }
+  document.documentElement.classList.toggle('signed-out', !user);
+  $('#account').classList.toggle('hidden', !user);
+  $('#accountEmail').textContent = user ? user.email : '';
+  if (user) { showError(''); window.dispatchEvent(new Event('cg-signed-in')); }
+});
+$('#signInBtn').addEventListener('click', async () => {
+  showError('');
+  try { await signInWithPopup(auth, provider); }
+  catch (e) {
+    const code = String(e?.code || e?.message || '');
+    if (code.includes('popup-closed-by-user') || code.includes('cancelled-popup-request')) return;
+    showError(code.includes('popup-blocked') ? 'Your browser blocked the Google window. Allow pop-ups for this page, then try again.'
+      : code.includes('unauthorized-domain') ? 'Sign-in is not set up for this page yet. Please let Jay know on Slack.'
+      : code.includes('permission-denied') || code.includes('blocking') || code.includes('admin-restricted') ? 'Convo Greeting is for Convo staff. Choose your Convo work account.'
+      : 'Sign-in did not work. Check your connection and try again.');
+  }
+});
+$('#signOutBtn').addEventListener('click', () => signOut(auth));
+</script>
 <script>{ const v = document.querySelector('.app-version'); if (v.textContent.includes('__')) v.textContent = 'Local preview (not published)'; }</script>
 
 <div class="scrim problem hidden" id="problemSheet" role="alertdialog" aria-modal="true" aria-labelledby="problemTitle" aria-describedby="problemText">
@@ -1332,9 +1393,11 @@ const connectorUrl = () => (location.hostname === 'localhost' && new URLSearchPa
 const ELEVEN_AGE = { '13-17': 'young', '18-24': 'young', '25-34': 'middle aged', '35-44': 'middle aged', '45-54': 'middle aged', '55-64': 'old', '65+': 'old' };
 const ELEVEN_GENDER = { female: ['female'], male: ['male'], nonbinary: ['neutral', 'non binary', 'nonbinary'], nopref: ['female'] };
 let elevenVoices = null; // the account's voices, read once
+// The connector only answers signed-in Convo staff
+const authHeader = async () => { const t = window.cgAuth && await window.cgAuth.token(); return t ? { Authorization: 'Bearer ' + t } : {}; };
 async function loadElevenVoices() {
   if (elevenVoices) return elevenVoices;
-  const r = await fetch(connectorUrl() + '/voices');
+  const r = await fetch(connectorUrl() + '/voices', { headers: await authHeader() });
   if (!r.ok) throw new Error(`Voice connector: ${r.status} ${(await r.text()).slice(0, 200)}`);
   // ElevenLabs names carry a description ("Bella - Professional, Bright, Warm"); staff see the first name
   elevenVoices = (await r.json()).voices.filter(v => v.gender).map(v => ({ ...v, name: v.name.split(' - ')[0].trim() }));
@@ -1365,7 +1428,7 @@ async function speak(text) {
   const p = voiceProfile();
   if (p.engine === 'eleven') {
     if (!p.voiceId) throw new Error('No ElevenLabs voices in the account yet');
-    const r = await fetch(connectorUrl() + '/tts', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+    const r = await fetch(connectorUrl() + '/tts', { method: 'POST', headers: { 'Content-Type': 'application/json', ...await authHeader() },
       body: JSON.stringify({ voiceId: p.voiceId, text, speed: p.pace }) });
     if (!r.ok) throw Object.assign(new Error(`ElevenLabs: ${r.status} ${(await r.text()).slice(0, 200)}`), { eleven: true });
     const buf = await getAudioCtx().decodeAudioData(await r.arrayBuffer());
@@ -1759,7 +1822,11 @@ $('#voiceGender').addEventListener('change', e => { stopPreview(); state.gender 
 $('#voiceAge').addEventListener('change', e => { stopPreview(); state.age = e.target.value; syncVoiceWhich(); });
 // Voice set: ElevenLabs when the connector is set up, otherwise the original voices only
 $('#voiceSetPick').classList.toggle('hidden', !connectorUrl());
-if (connectorUrl()) { state.engine = 'eleven'; loadElevenVoices().then(syncVoiceWhich).catch(e => { console.error(e); state.elevenDown = true; syncVoiceWhich(); }); }
+if (connectorUrl()) {
+  state.engine = 'eleven';
+  window.addEventListener('cg-signed-in', () => { state.elevenDown = false; elevenVoices = null;
+    loadElevenVoices().then(syncVoiceWhich).catch(e => { console.error(e); state.elevenDown = true; syncVoiceWhich(); }); });
+}
 $('#voiceEngine').value = state.engine;
 $('#voiceEngine').addEventListener('change', e => {
   stopPreview(); state.engine = e.target.value; state.elevenDown = false;
